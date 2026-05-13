@@ -28,6 +28,7 @@
     /* アニメーション用 */
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     @keyframes zoomIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(100%); } to { opacity: 1; transform: translateY(0); } }
     
     /* スマホのスワイプ風エフェクト */
     @keyframes slideInFromRight {
@@ -41,6 +42,7 @@
 
     .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
     .animate-zoom-in { animation: zoomIn 0.2s ease-out forwards; }
+    .animate-slide-up { animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
     .animate-slide-left { animation: slideInFromRight 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) forwards; }
     .animate-slide-right { animation: slideInFromLeft 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) forwards; }
     
@@ -79,10 +81,28 @@
     // テキストからX(Twitter)のURLを抽出する
     const extractTweetUrls = (text) => {
       if (!text) return [];
-      // x.com と twitter.com の両方に対応
       const regex = /https?:\/\/(?:twitter\.com|x\.com)\/[a-zA-Z0-9_]+\/status\/[0-9]+/g;
       return Array.from(new Set(text.match(regex) || []));
     };
+
+    // 共通タグコンポーネント (クリックでプロフィールを開く)
+    function TagList({ places, people, onOpenProfile }) {
+      if (!places?.length && !people?.length) return null;
+      return (
+        <div className="flex flex-wrap gap-2">
+          {places && places.map((place, i) => (
+            <button key={`p-${i}`} onClick={(e) => { e.stopPropagation(); onOpenProfile && onOpenProfile({ type: 'place', name: place }); }} className="inline-flex items-center px-2 py-1 bg-green-50 text-green-700 text-[10px] font-bold rounded-md border border-green-100 hover:bg-green-100 active:scale-95 transition-transform shadow-sm">
+              <i className="fas fa-map-marker-alt mr-1 opacity-70"></i> {place}
+            </button>
+          ))}
+          {people && people.map((person, i) => (
+            <button key={`w-${i}`} onClick={(e) => { e.stopPropagation(); onOpenProfile && onOpenProfile({ type: 'person', name: person }); }} className="inline-flex items-center px-2 py-1 bg-orange-50 text-orange-700 text-[10px] font-bold rounded-md border border-orange-100 hover:bg-orange-100 active:scale-95 transition-transform shadow-sm">
+              <i className="fas fa-users mr-1 opacity-70"></i> {person}
+            </button>
+          ))}
+        </div>
+      );
+    }
 
     // X(Twitter)の埋め込みプレビューコンポーネント
     function TweetEmbed({ url }) {
@@ -106,7 +126,6 @@
         }
       }, [url]);
 
-      // X.com だと埋め込みウィジェットが反応しない事があるため、twitter.comに置換する
       const embedUrl = url.replace('x.com', 'twitter.com');
 
       return (
@@ -151,6 +170,7 @@
       const [activeTab, setActiveTab] = useState('home');
       const [entries, setEntries] = useState([]);
       const [isLoading, setIsLoading] = useState(false);
+      const [selectedProfile, setSelectedProfile] = useState(null); // プロフィールモーダル用ステート
 
       const today = new Date();
       const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -220,7 +240,6 @@
             </div>
           )}
 
-          {/* 横揺れ防止のため overflow-x-hidden を追加 */}
           <main className="flex-1 overflow-y-auto overflow-x-hidden pb-20">
             {activeTab === 'home' && (
               <HomeTab 
@@ -230,6 +249,7 @@
                 entries={entries} 
                 onSave={saveEntry} 
                 isGasLinked={!!GAS_WEB_APP_URL} 
+                onOpenProfile={setSelectedProfile}
               />
             )}
             {activeTab === 'calendar' && (
@@ -240,10 +260,11 @@
                   setViewingDateStr(date);
                   setActiveTab('home');
                 }}
+                onOpenProfile={setSelectedProfile}
               />
             )}
-            {activeTab === 'search' && <SearchTab entries={entries} />}
-            {activeTab === 'insights' && <InsightsTab entries={entries} />}
+            {activeTab === 'search' && <SearchTab entries={entries} onOpenProfile={setSelectedProfile} />}
+            {activeTab === 'insights' && <InsightsTab entries={entries} onOpenProfile={setSelectedProfile} />}
           </main>
 
           <nav className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 flex justify-around items-center h-16 pb-safe z-40">
@@ -264,6 +285,164 @@
               <span className="text-[10px] font-medium">振り返り</span>
             </button>
           </nav>
+
+          {/* 個別プロフィール画面モーダル */}
+          {selectedProfile && (
+            <ProfileModal 
+              profile={selectedProfile} 
+              entries={entries} 
+              onClose={() => setSelectedProfile(null)} 
+              onOpenProfile={setSelectedProfile} 
+            />
+          )}
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 個別プロフィール画面 (ProfileModal)
+    // ==========================================
+    function ProfileModal({ profile, entries, onClose, onOpenProfile }) {
+      if (!profile) return null;
+      const { type, name } = profile;
+      const isPerson = type === 'person';
+      
+      const colorClass = isPerson ? 'from-orange-400 to-orange-500' : 'from-green-400 to-green-500';
+      const textClass = isPerson ? 'text-orange-600' : 'text-green-600';
+      const icon = isPerson ? 'fa-user' : 'fa-map-marker-alt';
+
+      // 対象に関連するエントリを抽出
+      const relatedEntries = useMemo(() => {
+        return entries.filter(e => {
+          if (type === 'person') return splitTags(e.withWhom).includes(name);
+          if (type === 'place') return splitTags(e.where).includes(name);
+          return false;
+        }).sort((a, b) => new Date(b.when) - new Date(a.when));
+      }, [entries, type, name]);
+
+      // 統計の計算
+      const stats = useMemo(() => {
+        if (relatedEntries.length === 0) return null;
+        const firstDate = relatedEntries[relatedEntries.length - 1].when;
+        const daysCount = relatedEntries.length;
+        
+        const relatedMap = {};
+        const images = [];
+        
+        relatedEntries.forEach(e => {
+          if (e.images) images.push(...e.images);
+          
+          // 人のプロフなら「場所」を集計、場所のプロフなら「人」を集計
+          const tags = type === 'person' ? splitTags(e.where) : splitTags(e.withWhom);
+          tags.forEach(t => {
+            relatedMap[t] = (relatedMap[t] || 0) + 1;
+          });
+        });
+        
+        const topRelated = Object.entries(relatedMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        
+        return { firstDate, daysCount, topRelated, images };
+      }, [relatedEntries, type]);
+
+      return (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center animate-fade-in" onClick={onClose}>
+          <div 
+            className="bg-gray-50 w-full max-w-lg h-[88vh] rounded-t-[2rem] overflow-hidden flex flex-col shadow-2xl animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* ヘッダー */}
+            <div className={`p-6 pb-5 bg-gradient-to-br ${colorClass} text-white relative`}>
+              <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 bg-black/20 hover:bg-black/30 rounded-full flex items-center justify-center transition-colors">
+                <i className="fas fa-times"></i>
+              </button>
+              <div className="flex items-center gap-4 mt-2">
+                <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-3xl backdrop-blur-sm border border-white/30 shadow-inner">
+                  <i className={`fas ${icon}`}></i>
+                </div>
+                <div>
+                  <p className="text-xs opacity-90 font-medium mb-0.5 tracking-wider uppercase">{isPerson ? 'Profile' : 'Location'}</p>
+                  <h2 className="text-2xl font-bold">{name}</h2>
+                </div>
+              </div>
+            </div>
+
+            {/* コンテンツ */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-6 pb-10">
+              
+              {stats ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 text-center">
+                      <p className="text-[10px] text-gray-400 font-bold mb-1">思い出の日数</p>
+                      <p className={`text-3xl font-bold ${textClass}`}>{stats.daysCount} <span className="text-sm text-gray-400 font-medium ml-1">日</span></p>
+                    </div>
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 text-center flex flex-col justify-center">
+                      <p className="text-[10px] text-gray-400 font-bold mb-1">はじめての記録</p>
+                      <p className="text-lg font-bold text-gray-700">{stats.firstDate.replace(/-/g, '/')}</p>
+                    </div>
+                  </div>
+
+                  {stats.images.length > 0 && (
+                    <div>
+                      <h3 className="text-xs font-bold text-gray-500 mb-3 ml-1 uppercase tracking-wider"><i className="fas fa-camera mr-2"></i>Photos</h3>
+                      <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+                        {stats.images.map((img, i) => (
+                          <img key={i} src={img} className="w-24 h-24 object-cover rounded-2xl border border-gray-200 flex-shrink-0 shadow-sm" />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {stats.topRelated.length > 0 && (
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                      <h3 className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wider">
+                        <i className={`fas ${isPerson ? 'fa-map-marker-alt' : 'fa-users'} mr-2`}></i>
+                        よく一緒に{isPerson ? '行く場所' : 'いる人'}
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {stats.topRelated.map(([relName, count], idx) => (
+                          <button 
+                            key={idx} 
+                            onClick={() => onOpenProfile({ type: isPerson ? 'place' : 'person', name: relName })}
+                            className={`px-3 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 text-xs font-bold rounded-xl border border-gray-200 flex items-center gap-1 active:scale-95 transition-transform`}
+                          >
+                            <span>{relName}</span>
+                            <span className="opacity-40 font-normal ml-1">{count}回</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <h3 className="text-xs font-bold text-gray-500 mb-3 ml-1 uppercase tracking-wider"><i className="fas fa-history mr-2"></i>History</h3>
+                    <div className="space-y-4">
+                      {relatedEntries.map((entry, idx) => (
+                        <div key={idx} className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-sm font-bold text-blue-600">{entry.when.replace(/-/g, '/')}</span>
+                            <div className="flex gap-1 text-base">
+                              {entry.weather && <span>{entry.weather}</span>}
+                              {entry.mood && <span>{entry.mood}</span>}
+                            </div>
+                          </div>
+                          {entry.what && <p className="text-gray-700 text-[13px] whitespace-pre-wrap leading-relaxed mb-3">{entry.what}</p>}
+                          {/* 自身以外のタグを表示 */}
+                          <TagList 
+                            places={splitTags(entry.where).filter(p => !(!isPerson && p === name))} 
+                            people={splitTags(entry.withWhom).filter(p => !(isPerson && p === name))} 
+                            onOpenProfile={onOpenProfile} 
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-12 text-gray-400">データがありません</div>
+              )}
+            </div>
+          </div>
         </div>
       );
     }
@@ -271,7 +450,7 @@
     // ==========================================
     // 入力タブ
     // ==========================================
-    function HomeTab({ viewingDateStr, setViewingDateStr, todayStr, entries, onSave, isGasLinked }) {
+    function HomeTab({ viewingDateStr, setViewingDateStr, todayStr, entries, onSave, isGasLinked, onOpenProfile }) {
       const [what, setWhat] = useState('');
       const [where, setWhere] = useState('');
       const [withWhom, setWithWhom] = useState('');
@@ -284,46 +463,40 @@
 
       const [slideEffect, setSlideEffect] = useState('animate-fade-in');
 
-      // --- 自動保存用の処理 ---
       const stateRef = useRef({ what, where, withWhom, mood, weather, images, viewingDateStr, entries });
       const onSaveRef = useRef(onSave);
       
-      // 常に最新の入力状態を保持しておく
       useEffect(() => {
         stateRef.current = { what, where, withWhom, mood, weather, images, viewingDateStr, entries };
         onSaveRef.current = onSave;
       });
 
-      // 日付が変わる直前、またはタブが切り替わる直前に変更があれば自動保存
+      // スワイプ移動前やタブ切り替え前に実行する手動・自動保存処理
+      const triggerAutoSave = () => {
+        const state = stateRef.current;
+        const originalEntry = state.entries.find(e => e.when === state.viewingDateStr) || {};
+        
+        const isChanged = 
+          (originalEntry.what || '') !== state.what ||
+          (originalEntry.where || '') !== state.where ||
+          (originalEntry.withWhom || '') !== state.withWhom ||
+          (originalEntry.mood || '') !== state.mood ||
+          (originalEntry.weather || '') !== state.weather ||
+          JSON.stringify(originalEntry.images || []) !== JSON.stringify(state.images);
+
+        const hasContent = state.what || state.where || state.withWhom || state.mood || state.weather || state.images.length > 0;
+
+        if (isChanged && hasContent) {
+          onSaveRef.current({ 
+            when: state.viewingDateStr, what: state.what, where: state.where, withWhom: state.withWhom, mood: state.mood, weather: state.weather, images: state.images 
+          });
+        }
+      };
+
+      // コンポーネントアンマウント時(タブ切り替え等)の保存
       useEffect(() => {
-        return () => {
-          const state = stateRef.current;
-          const originalEntry = state.entries.find(e => e.when === state.viewingDateStr) || {};
-          
-          const isChanged = 
-            (originalEntry.what || '') !== state.what ||
-            (originalEntry.where || '') !== state.where ||
-            (originalEntry.withWhom || '') !== state.withWhom ||
-            (originalEntry.mood || '') !== state.mood ||
-            (originalEntry.weather || '') !== state.weather ||
-            JSON.stringify(originalEntry.images || []) !== JSON.stringify(state.images);
-
-          const hasContent = state.what || state.where || state.withWhom || state.mood || state.weather || state.images.length > 0;
-
-          if (isChanged && hasContent) {
-            onSaveRef.current({ 
-              when: state.viewingDateStr, 
-              what: state.what, 
-              where: state.where, 
-              withWhom: state.withWhom, 
-              mood: state.mood, 
-              weather: state.weather, 
-              images: state.images 
-            });
-          }
-        };
+        return () => triggerAutoSave();
       }, [viewingDateStr]); 
-      // -------------------------
 
       const touchStartX = useRef(null);
       const touchStartY = useRef(null);
@@ -332,16 +505,19 @@
       const maxSwipeTime = 300; 
 
       const handleNextDay = () => {
+        triggerAutoSave(); 
         setSlideEffect('animate-slide-left');
         setViewingDateStr(addDays(viewingDateStr, 1));
       };
 
       const handlePrevDay = () => {
+        triggerAutoSave(); 
         setSlideEffect('animate-slide-right');
         setViewingDateStr(addDays(viewingDateStr, -1));
       };
 
       const handleToday = () => {
+        triggerAutoSave();
         const tDate = new Date(todayStr);
         const vDate = new Date(viewingDateStr);
         setSlideEffect(tDate > vDate ? 'animate-slide-left' : 'animate-slide-right');
@@ -349,7 +525,7 @@
       };
 
       const handleTouchStart = (e) => {
-        if (['TEXTAREA', 'INPUT', 'BUTTON', 'LABEL', 'A'].includes(e.target.tagName)) return;
+        if (['TEXTAREA', 'INPUT', 'BUTTON', 'LABEL', 'A', 'SELECT', 'OPTION'].includes(e.target.tagName)) return;
         
         touchStartX.current = e.targetTouches[0].clientX;
         touchStartY.current = e.targetTouches[0].clientY;
@@ -382,6 +558,7 @@
         }
       };
 
+      // 入力サジェスト用
       const popularPlaces = useMemo(() => {
         const map = {};
         entries.forEach(e => splitTags(e.where).forEach(p => map[p] = (map[p] || 0) + 1));
@@ -431,7 +608,7 @@
 
       const handleImageChange = async (e) => {
         const files = Array.from(e.target.files);
-        const remainingSlots = 3 - images.length;
+        const remainingSlots = 4 - images.length; 
         const filesToProcess = files.slice(0, remainingSlots);
         
         setIsSaving(true);
@@ -454,7 +631,6 @@
       const [year, month, day] = viewingDateStr.split('-');
       const isToday = viewingDateStr === todayStr;
       
-      // 入力中のテキストから抽出したXのURL
       const inputTweetUrls = extractTweetUrls(what);
 
       return (
@@ -467,11 +643,12 @@
             
             {!isGasLinked && (
               <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-[10px] sm:text-xs p-2 rounded-lg leading-tight">
-                オフラインモードです。コード内の <code>GAS_WEB_APP_URL</code> を設定するとスプレッドシートと連携します。
+                オフラインモードです。コード内の <code>GAS_WEB_APP_URL</code> を設定すると連携します。
               </div>
             )}
 
-            <div className="flex items-center justify-between mt-2 bg-gray-50 rounded-2xl p-2 border border-gray-100">
+            {/* 日付ヘッダー */}
+            <div className="sticky top-2 z-20 flex items-center justify-between bg-white/90 backdrop-blur-md rounded-2xl p-2 border border-gray-200 shadow-sm mt-1">
               <button onClick={handlePrevDay} className="p-2 w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded-xl transition-colors">
                 <i className="fas fa-chevron-left"></i>
               </button>
@@ -490,86 +667,84 @@
               </button>
             </div>
 
-            <div className="space-y-5 bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-gray-100 relative">
+            {/* 入力フォーム */}
+            <div className="space-y-3 bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-gray-100 relative">
               
-              <div className="flex justify-between items-center bg-gray-50 p-2 rounded-2xl">
-                <div className="flex gap-1">
-                  {MOODS.map(m => (
-                    <button key={m} onClick={() => setMood(m)} className={`w-8 h-8 text-xl flex items-center justify-center rounded-full transition-all ${mood === m ? 'bg-white shadow-sm ring-2 ring-blue-400 scale-110' : 'opacity-60 hover:opacity-100 hover:bg-gray-200'}`}>{m}</button>
-                  ))}
+              <div className="flex gap-2">
+                <div className="relative w-1/2">
+                  <select value={mood} onChange={(e) => setMood(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm appearance-none text-gray-700">
+                    <option value="">🙂 気分を選択</option>
+                    {MOODS.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                    <i className="fas fa-chevron-down text-gray-400 text-[10px]"></i>
+                  </div>
                 </div>
-                <div className="w-px h-6 bg-gray-300 mx-2"></div>
-                <div className="flex gap-1">
-                  {WEATHERS.map(w => (
-                    <button key={w} onClick={() => setWeather(w)} className={`w-8 h-8 text-xl flex items-center justify-center rounded-full transition-all ${weather === w ? 'bg-white shadow-sm ring-2 ring-orange-400 scale-110' : 'opacity-60 hover:opacity-100 hover:bg-gray-200'}`}>{w}</button>
-                  ))}
+                <div className="relative w-1/2">
+                  <select value={weather} onChange={(e) => setWeather(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm appearance-none text-gray-700">
+                    <option value="">🌤️ 天気を選択</option>
+                    {WEATHERS.map(w => <option key={w} value={w}>{w}</option>)}
+                  </select>
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                    <i className="fas fa-chevron-down text-gray-400 text-[10px]"></i>
+                  </div>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center justify-between">
-                  <span>できごと</span>
-                  {inputTweetUrls.length > 0 && <span className="text-[10px] text-blue-500"><i className="fab fa-twitter"></i> Xのリンクを検知</span>}
-                </label>
-                <textarea value={what} onChange={(e) => setWhat(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none text-base" rows="4" placeholder="X(旧Twitter)のURLを貼ると、自動でツイートが表示されます！" disabled={isSaving}/>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-map-marker-alt text-gray-400 text-xs"></i></div>
+                  <input type="text" value={where} onChange={(e) => setWhere(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="場所 (例: 自宅, 渋谷)" disabled={isSaving} />
+                </div>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-users text-gray-400 text-xs"></i></div>
+                  <input type="text" value={withWhom} onChange={(e) => setWithWhom(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="誰と (例: 家族)" disabled={isSaving} />
+                </div>
+              </div>
+
+              {(popularPlaces.length > 0 || popularPeople.length > 0) && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {popularPlaces.map((p, i) => (
+                    <button key={`sp-${i}`} onClick={() => handleAddTag(setWhere, where, p)} className="text-[10px] bg-green-50 text-green-700 px-2 py-1 rounded-md border border-green-100 hover:bg-green-100 whitespace-nowrap active:scale-95 transition-transform">+{p}</button>
+                  ))}
+                  {popularPeople.map((p, i) => (
+                    <button key={`sw-${i}`} onClick={() => handleAddTag(setWithWhom, withWhom, p)} className="text-[10px] bg-orange-50 text-orange-700 px-2 py-1 rounded-md border border-orange-100 hover:bg-orange-100 whitespace-nowrap active:scale-95 transition-transform">+{p}</button>
+                  ))}
+                </div>
+              )}
+
+              <div className="relative">
+                <textarea value={what} onChange={(e) => setWhat(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none text-base bg-gray-50 placeholder-gray-400" rows="4" placeholder="できごと (XのURLを貼ると自動でツイートが表示されます)" disabled={isSaving}/>
+                {inputTweetUrls.length > 0 && <span className="absolute top-2 right-2 text-[10px] text-blue-500 bg-white/80 px-1 rounded"><i className="fab fa-twitter"></i> Xリンク検知</span>}
                 
-                {/* ツイートプレビュー (入力中) */}
                 {inputTweetUrls.length > 0 && (
                   <div className="flex flex-col gap-2 mt-2">
                     {inputTweetUrls.map((url, i) => <TweetEmbed key={`input-${url}-${i}`} url={url} />)}
                   </div>
                 )}
               </div>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center"><i className="fas fa-map-marker-alt mr-1"></i> 場所</label>
-                  <input type="text" value={where} onChange={(e) => setWhere(e.target.value)} className="w-full p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="例: 自宅, 渋谷" disabled={isSaving} />
-                  {popularPlaces.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {popularPlaces.map((p, i) => (
-                        <button key={i} onClick={() => handleAddTag(setWhere, where, p)} className="text-[10px] bg-green-50 text-green-700 px-2 py-1 rounded-md border border-green-100 hover:bg-green-100 whitespace-nowrap active:scale-95 transition-transform">+{p}</button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center"><i className="fas fa-users mr-1"></i> 誰と</label>
-                  <input type="text" value={withWhom} onChange={(e) => setWithWhom(e.target.value)} className="w-full p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="例: 家族, 山田さん" disabled={isSaving} />
-                  {popularPeople.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {popularPeople.map((p, i) => (
-                        <button key={i} onClick={() => handleAddTag(setWithWhom, withWhom, p)} className="text-[10px] bg-orange-50 text-orange-700 px-2 py-1 rounded-md border border-orange-100 hover:bg-orange-100 whitespace-nowrap active:scale-95 transition-transform">+{p}</button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+
+              <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-200">
+                {images.map((img, idx) => (
+                  <div key={idx} className="relative w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
+                    <img src={img} className="w-full h-full object-cover" />
+                    <button onClick={() => handleRemoveImage(idx)} className="absolute top-1 right-1 bg-red-500/90 backdrop-blur-sm text-white rounded-full w-6 h-6 flex items-center justify-center shadow-lg active:scale-90 transition-transform"><i className="fas fa-times text-xs"></i></button>
+                  </div>
+                ))}
+                {images.length < 4 && (
+                  <label className={`w-full h-full flex flex-col items-center justify-center bg-white border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:bg-gray-50 transition-colors ${isSaving ? 'opacity-50 pointer-events-none' : ''}`}>
+                    <i className="fas fa-camera text-gray-400 text-xl mb-1"></i>
+                    <span className="text-[10px] text-gray-400 font-medium mt-1">写真を追加</span>
+                    <input type="file" accept="image/*" multiple onChange={handleImageChange} className="hidden" disabled={isSaving} />
+                  </label>
+                )}
               </div>
 
-              <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center"><i className="fas fa-camera mr-1"></i> 写真 (最大3枚)</label>
-                <div className="flex flex-col gap-3">
-                  {images.map((img, idx) => (
-                    <div key={idx} className="relative w-full aspect-square bg-gray-100 rounded-2xl overflow-hidden border border-gray-200">
-                      <img src={img} className="w-full h-full object-cover" />
-                      <button onClick={() => handleRemoveImage(idx)} className="absolute top-3 right-3 bg-red-500/90 backdrop-blur-sm text-white rounded-full w-8 h-8 flex items-center justify-center shadow-lg active:scale-90 transition-transform"><i className="fas fa-times"></i></button>
-                    </div>
-                  ))}
-                  {images.length < 3 && (
-                    <label className={`w-full aspect-square flex flex-col items-center justify-center bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl cursor-pointer hover:bg-gray-100 transition-colors ${isSaving ? 'opacity-50 pointer-events-none' : ''}`}>
-                      <i className="fas fa-plus text-gray-400 text-xl mb-1"></i>
-                      <span className="text-xs text-gray-500 font-medium">写真をえらぶ</span>
-                      <input type="file" accept="image/*" multiple onChange={handleImageChange} className="hidden" disabled={isSaving} />
-                    </label>
-                  )}
-                </div>
-              </div>
-
-              <div className="pt-4 flex items-center justify-between border-t border-gray-100 mt-4">
+              <div className="pt-2 flex items-center justify-between border-t border-gray-50">
                 <span className="text-sm text-green-600 font-medium">{saveMessage}</span>
-                <button onClick={handleSave} disabled={isSaving} className={`flex items-center text-white px-6 py-3 rounded-2xl font-bold transition-all shadow-md ${isSaving ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700 active:scale-95'}`}>
-                  {isSaving && <i className="fas fa-spinner fa-spin mr-2"></i>}
-                  {isSaving ? '保存中...' : '日記を保存する'}
+                <button onClick={handleSave} disabled={isSaving} className={`flex items-center text-white px-5 py-2.5 rounded-2xl font-bold transition-all shadow-md ${isSaving ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700 active:scale-95'}`}>
+                  {isSaving ? <i className="fas fa-spinner fa-spin mr-2"></i> : <i className="fas fa-check mr-2"></i>}
+                  {isSaving ? '保存中...' : '保存'}
                 </button>
               </div>
             </div>
@@ -587,8 +762,6 @@
                 <div className="space-y-6">
                   {pastEntries.map((entry, idx) => {
                     const entryYear = entry.when.split('-')[0];
-                    const places = splitTags(entry.where);
-                    const people = splitTags(entry.withWhom);
                     const tweetUrls = extractTweetUrls(entry.what);
 
                     return (
@@ -602,28 +775,24 @@
                         </div>
                         
                         {entry.images && entry.images.length > 0 && (
-                          <div className="flex flex-col gap-2 mb-4">
+                          <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-100 mb-4">
                             {entry.images.map((img, i) => (
-                              <img key={i} src={img} className="w-full aspect-square object-cover rounded-2xl border border-gray-100" />
+                              <div key={`past-img-${i}`} className="w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
+                                <img src={img} className="w-full h-full object-cover" />
+                              </div>
                             ))}
                           </div>
                         )}
 
                         <p className="text-gray-800 whitespace-pre-wrap text-[15px] leading-relaxed mb-4">{entry.what}</p>
                         
-                        {/* 過去のエントリのツイート表示 */}
                         {tweetUrls.length > 0 && (
                           <div className="flex flex-col gap-2 mb-4">
                             {tweetUrls.map((url, i) => <TweetEmbed key={`past-${url}-${i}`} url={url} />)}
                           </div>
                         )}
 
-                        {(places.length > 0 || people.length > 0) && (
-                          <div className="flex flex-wrap gap-2">
-                            {places.map((place, i) => <span key={`p-${i}`} className="inline-flex items-center px-2 py-1 bg-green-50 text-green-700 text-[10px] font-bold rounded-md border border-green-100"><i className="fas fa-map-marker-alt mr-1"></i> {place}</span>)}
-                            {people.map((person, i) => <span key={`w-${i}`} className="inline-flex items-center px-2 py-1 bg-orange-50 text-orange-700 text-[10px] font-bold rounded-md border border-orange-100"><i className="fas fa-users mr-1"></i> {person}</span>)}
-                          </div>
-                        )}
+                        <TagList places={splitTags(entry.where)} people={splitTags(entry.withWhom)} onOpenProfile={onOpenProfile} />
                       </div>
                     );
                   })}
@@ -638,7 +807,7 @@
     // ==========================================
     // カレンダータブ
     // ==========================================
-    function CalendarTab({ entries, todayStr, onSelectDate }) {
+    function CalendarTab({ entries, todayStr, onSelectDate, onOpenProfile }) {
       const [currentYear, setCurrentYear] = useState(new Date(todayStr).getFullYear());
       const [selectedDate, setSelectedDate] = useState(null);
       const months = Array.from({ length: 12 }, (_, i) => i);
@@ -690,9 +859,11 @@
                       </div>
                       
                       {selectedEntry.images && selectedEntry.images.length > 0 && (
-                        <div className="flex flex-col gap-2 mb-4">
+                        <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-100 mb-4">
                           {selectedEntry.images.map((img, i) => (
-                            <img key={i} src={img} className="w-full aspect-square object-cover rounded-2xl border border-gray-100" />
+                            <div key={`modal-img-${i}`} className="w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
+                              <img src={img} className="w-full h-full object-cover" />
+                            </div>
                           ))}
                         </div>
                       )}
@@ -705,9 +876,8 @@
                         </div>
                       )}
 
-                      <div className="flex flex-wrap gap-2 mb-4">
-                        {splitTags(selectedEntry.where).map((place, i) => <span key={`p-${i}`} className="inline-flex items-center px-2 py-1 bg-green-50 text-green-700 text-xs font-bold rounded-md border border-green-100"><i className="fas fa-map-marker-alt mr-1"></i> {place}</span>)}
-                        {splitTags(selectedEntry.withWhom).map((person, i) => <span key={`w-${i}`} className="inline-flex items-center px-2 py-1 bg-orange-50 text-orange-700 text-xs font-bold rounded-md border border-orange-100"><i className="fas fa-users mr-1"></i> {person}</span>)}
+                      <div className="mb-4">
+                        <TagList places={splitTags(selectedEntry.where)} people={splitTags(selectedEntry.withWhom)} onOpenProfile={onOpenProfile} />
                       </div>
                     </>
                   ) : <div className="text-center py-6 text-gray-400 text-sm">この日の日記はありません。</div>}
@@ -763,7 +933,7 @@
     // ==========================================
     // 検索タブ
     // ==========================================
-    function SearchTab({ entries }) {
+    function SearchTab({ entries, onOpenProfile }) {
       const [query, setQuery] = useState('');
 
       const popularPeople = useMemo(() => {
@@ -798,7 +968,11 @@
               <div className="mb-8">
                 <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center"><i className="fas fa-users mr-1"></i> 人で絞り込む</h3>
                 <div className="flex flex-wrap gap-2">
-                  {popularPeople.map((person, idx) => <button key={idx} onClick={() => setQuery(person)} className="px-3 py-1.5 bg-orange-50 text-orange-700 text-sm font-bold rounded-xl border border-orange-100 active:scale-95">{person}</button>)}
+                  {popularPeople.map((person, idx) => (
+                    <button key={idx} onClick={() => onOpenProfile({ type: 'person', name: person })} className="px-3 py-1.5 bg-orange-50 text-orange-700 text-sm font-bold rounded-xl border border-orange-100 active:scale-95 shadow-sm">
+                      <i className="fas fa-user text-xs mr-1 opacity-50"></i> {person}
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
@@ -821,9 +995,11 @@
                       </div>
 
                       {entry.images && entry.images.length > 0 && (
-                        <div className="flex flex-col gap-2 mb-4">
+                        <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-100 mb-4">
                           {entry.images.map((img, i) => (
-                            <img key={i} src={img} className="w-full aspect-square object-cover rounded-2xl border border-gray-100" />
+                            <div key={`search-img-${i}`} className="w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
+                              <img src={img} className="w-full h-full object-cover" />
+                            </div>
                           ))}
                         </div>
                       )}
@@ -836,10 +1012,7 @@
                         </div>
                       )}
 
-                      <div className="flex flex-wrap gap-2">
-                        {splitTags(entry.where).map((place, i) => <span key={`p-${i}`} className="inline-flex items-center px-2 py-1 bg-green-50 text-green-700 text-[10px] font-bold rounded-md border border-green-100"><i className="fas fa-map-marker-alt mr-1"></i> {place}</span>)}
-                        {splitTags(entry.withWhom).map((person, i) => <span key={`w-${i}`} className="inline-flex items-center px-2 py-1 bg-orange-50 text-orange-700 text-[10px] font-bold rounded-md border border-orange-100"><i className="fas fa-users mr-1"></i> {person}</span>)}
-                      </div>
+                      <TagList places={splitTags(entry.where)} people={splitTags(entry.withWhom)} onOpenProfile={onOpenProfile} />
                     </div>
                   );
                 })}
@@ -853,7 +1026,172 @@
     // ==========================================
     // インサイト（振り返り）タブ
     // ==========================================
-    function InsightsTab({ entries }) {
+    function InsightsTab({ entries, onOpenProfile }) {
+      const [viewMode, setViewMode] = useState('monthly'); // 'monthly' | 'all'
+
+      return (
+        <div className="p-4 max-w-lg mx-auto animate-fade-in bg-gray-50 min-h-screen">
+          <div className="pt-2 pb-4 sticky top-0 bg-gray-50/95 backdrop-blur-sm z-10">
+            <h1 className="text-2xl font-bold text-gray-800 mb-3">振り返り</h1>
+            
+            {/* 切り替えタブ */}
+            <div className="flex bg-gray-200 p-1 rounded-xl">
+              <button 
+                onClick={() => setViewMode('monthly')} 
+                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${viewMode === 'monthly' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                月間ハイライト
+              </button>
+              <button 
+                onClick={() => setViewMode('all')} 
+                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${viewMode === 'all' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                全期間
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            {viewMode === 'monthly' ? (
+              <MonthlyInsights entries={entries} onOpenProfile={onOpenProfile} />
+            ) : (
+              <AllTimeInsights entries={entries} onOpenProfile={onOpenProfile} />
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // 月間ハイライト コンポーネント
+    function MonthlyInsights({ entries, onOpenProfile }) {
+      const [targetDate, setTargetDate] = useState(new Date());
+
+      const year = targetDate.getFullYear();
+      const month = targetDate.getMonth() + 1;
+      const monthPrefix = `${year}-${String(month).padStart(2, '0')}`;
+
+      // 対象月のエントリを抽出
+      const monthlyEntries = useMemo(() => entries.filter(e => e.when && e.when.startsWith(monthPrefix)), [entries, monthPrefix]);
+
+      const handlePrevMonth = () => {
+        const d = new Date(targetDate);
+        d.setMonth(d.getMonth() - 1);
+        setTargetDate(d);
+      };
+      const handleNextMonth = () => {
+        const d = new Date(targetDate);
+        d.setMonth(d.getMonth() + 1);
+        setTargetDate(d);
+      };
+
+      // 統計計算
+      const stats = useMemo(() => {
+        const placeMap = {};
+        const peopleMap = {};
+        const moodMap = {};
+        const monthImages = [];
+
+        monthlyEntries.forEach(e => {
+          splitTags(e.where).forEach(p => placeMap[p] = (placeMap[p] || 0) + 1);
+          splitTags(e.withWhom).forEach(p => peopleMap[p] = (peopleMap[p] || 0) + 1);
+          if (e.mood) moodMap[e.mood] = (moodMap[e.mood] || 0) + 1;
+          if (e.images) monthImages.push(...e.images);
+        });
+
+        const sortMap = (map) => Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 3); // Top 3
+
+        return {
+          totalDays: monthlyEntries.length,
+          topPlaces: sortMap(placeMap),
+          topPeople: sortMap(peopleMap),
+          moodCounts: Object.entries(moodMap).sort((a, b) => b[1] - a[1]),
+          images: monthImages
+        };
+      }, [monthlyEntries]);
+
+      return (
+        <div className="space-y-6 animate-fade-in">
+          
+          <div className="flex items-center justify-between bg-white rounded-2xl p-2 shadow-sm border border-gray-100">
+            <button onClick={handlePrevMonth} className="w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-xl"><i className="fas fa-chevron-left"></i></button>
+            <span className="font-bold text-lg text-gray-800">{year}年 {month}月</span>
+            <button onClick={handleNextMonth} className="w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-xl"><i className="fas fa-chevron-right"></i></button>
+          </div>
+
+          {monthlyEntries.length === 0 ? (
+            <div className="text-center py-16 bg-white rounded-3xl border border-gray-100 shadow-sm">
+              <i className="fas fa-calendar-times text-4xl mb-4 text-gray-200"></i>
+              <p className="text-sm text-gray-400 font-medium">この月の記録はありません</p>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-gradient-to-br from-indigo-400 to-indigo-600 rounded-3xl p-5 text-white shadow-md">
+                  <h3 className="text-indigo-100 text-[10px] font-bold mb-1 uppercase tracking-wider"><i className="fas fa-book-open mr-1"></i>書いた日数</h3>
+                  <div className="flex items-baseline mt-1">
+                    <span className="text-4xl font-bold">{stats.totalDays}</span>
+                    <span className="ml-1 text-sm font-medium opacity-80">日</span>
+                  </div>
+                </div>
+                <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+                  <h3 className="text-gray-400 text-[10px] font-bold mb-2 uppercase tracking-wider"><i className="fas fa-smile mr-1"></i>気分の分布</h3>
+                  {stats.moodCounts.length > 0 ? (
+                    <div className="flex flex-col gap-1.5 mt-2">
+                       {stats.moodCounts.slice(0, 2).map(([m, c]) => (
+                         <div key={m} className="flex justify-between items-center text-sm">
+                           <span className="text-xl">{m}</span>
+                           <span className="font-bold text-gray-600">{c}回</span>
+                         </div>
+                       ))}
+                    </div>
+                  ) : <span className="text-gray-400 text-sm mt-2 block">記録なし</span>}
+                </div>
+              </div>
+
+              {stats.topPeople.length > 0 && (
+                <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+                  <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-users text-orange-500 mr-2"></i>よく遊んだ人</h3>
+                  <div className="flex flex-wrap gap-2">
+                     {stats.topPeople.map(([name, count]) => (
+                       <button key={name} onClick={() => onOpenProfile({type: 'person', name})} className="px-3 py-1.5 bg-orange-50 text-orange-700 text-xs font-bold rounded-xl border border-orange-100 active:scale-95 shadow-sm flex items-center">
+                         {name} <span className="opacity-50 ml-1.5 font-medium">{count}回</span>
+                       </button>
+                     ))}
+                  </div>
+                </div>
+              )}
+
+              {stats.topPlaces.length > 0 && (
+                <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+                  <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-map-marker-alt text-green-500 mr-2"></i>よく行った場所</h3>
+                  <div className="flex flex-wrap gap-2">
+                     {stats.topPlaces.map(([name, count]) => (
+                       <button key={name} onClick={() => onOpenProfile({type: 'place', name})} className="px-3 py-1.5 bg-green-50 text-green-700 text-xs font-bold rounded-xl border border-green-100 active:scale-95 shadow-sm flex items-center">
+                         {name} <span className="opacity-50 ml-1.5 font-medium">{count}回</span>
+                       </button>
+                     ))}
+                  </div>
+                </div>
+              )}
+
+              {stats.images.length > 0 && (
+                <div>
+                  <h3 className="text-gray-500 text-xs font-bold mb-3 ml-1 uppercase tracking-wider"><i className="fas fa-image mr-2"></i>今月の写真</h3>
+                  <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+                    {stats.images.map((img, i) => (
+                      <img key={i} src={img} className="w-28 h-28 object-cover rounded-2xl border border-gray-200 flex-shrink-0 shadow-sm" />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      );
+    }
+
+    // 全期間（これまでの振り返り）コンポーネント
+    function AllTimeInsights({ entries, onOpenProfile }) {
       const totalEntries = entries.filter(e => e.what || e.where || e.withWhom || (e.images && e.images.length > 0)).length;
 
       const { topPlaces, topPeople, moodCounts } = useMemo(() => {
@@ -877,81 +1215,73 @@
       }, [entries]);
 
       return (
-        <div className="p-4 max-w-lg mx-auto animate-fade-in bg-gray-50 min-h-screen">
-          <div className="pt-4 pb-6">
-            <h1 className="text-2xl font-bold text-gray-800 mb-1">振り返り</h1>
-            <p className="text-sm text-gray-500">これまでのあなたの記録の集計です。</p>
+        <div className="space-y-6 animate-fade-in">
+          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-3xl p-6 text-white shadow-md">
+            <h3 className="text-blue-100 font-medium mb-1"><i className="fas fa-book-open mr-2"></i>全期間の記録日数</h3>
+            <div className="flex items-baseline">
+              <span className="text-5xl font-bold">{totalEntries}</span>
+              <span className="ml-2 text-lg opacity-80">日</span>
+            </div>
           </div>
 
-          <div className="space-y-6">
-            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-3xl p-6 text-white shadow-md">
-              <h3 className="text-blue-100 font-medium mb-1"><i className="fas fa-book-open mr-2"></i>書いた日数</h3>
-              <div className="flex items-baseline">
-                <span className="text-5xl font-bold">{totalEntries}</span>
-                <span className="ml-2 text-lg opacity-80">日</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-                <h3 className="text-gray-500 text-xs font-bold mb-3"><i className="fas fa-smile mr-1"></i> 多い気分</h3>
-                {moodCounts.length > 0 ? (
-                  <div className="flex items-center justify-between">
-                    <span className="text-4xl">{moodCounts[0][0]}</span>
-                    <span className="text-lg font-bold text-gray-700">{moodCounts[0][1]}回</span>
-                  </div>
-                ) : <span className="text-gray-400 text-sm">記録なし</span>}
-              </div>
-
-              <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-                <h3 className="text-gray-500 text-xs font-bold mb-3"><i className="fas fa-crown text-yellow-500 mr-1"></i> ベストパートナー</h3>
-                {topPeople.length > 0 ? (
-                  <div className="flex flex-col">
-                    <span className="text-lg font-bold text-gray-800 truncate">{topPeople[0][0]}</span>
-                    <span className="text-sm text-orange-500 font-bold">{topPeople[0][1]}回</span>
-                  </div>
-                ) : <span className="text-gray-400 text-sm">記録なし</span>}
-              </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+              <h3 className="text-gray-500 text-[10px] font-bold mb-3 uppercase tracking-wider"><i className="fas fa-smile mr-1"></i> 最も多い気分</h3>
+              {moodCounts.length > 0 ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-4xl">{moodCounts[0][0]}</span>
+                  <span className="text-lg font-bold text-gray-700">{moodCounts[0][1]}回</span>
+                </div>
+              ) : <span className="text-gray-400 text-sm">記録なし</span>}
             </div>
 
             <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-              <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-map-marker-alt text-green-500 mr-2"></i> よく行く場所 TOP 3</h3>
-              {topPlaces.length > 0 ? (
-                <ul className="space-y-3">
-                  {topPlaces.map((item, index) => (
-                    <li key={item[0]} className="flex justify-between items-center bg-gray-50 p-3 rounded-2xl">
-                      <div className="flex items-center">
-                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${index === 0 ? 'bg-yellow-100 text-yellow-700' : index === 1 ? 'bg-gray-200 text-gray-600' : 'bg-orange-100 text-orange-700'}`}>
-                          {index + 1}
-                        </span>
-                        <span className="font-bold text-gray-700">{item[0]}</span>
-                      </div>
-                      <span className="text-gray-500 text-sm font-bold">{item[1]}回</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : <p className="text-gray-400 text-sm text-center py-4">データがありません</p>}
-            </div>
-
-            <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-              <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-users text-blue-500 mr-2"></i> よく会う人 TOP 3</h3>
+              <h3 className="text-gray-500 text-[10px] font-bold mb-3 uppercase tracking-wider"><i className="fas fa-crown text-yellow-500 mr-1"></i> ベストパートナー</h3>
               {topPeople.length > 0 ? (
-                <ul className="space-y-3">
-                  {topPeople.map((item, index) => (
-                    <li key={item[0]} className="flex justify-between items-center bg-gray-50 p-3 rounded-2xl">
-                      <div className="flex items-center">
-                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${index === 0 ? 'bg-yellow-100 text-yellow-700' : index === 1 ? 'bg-gray-200 text-gray-600' : 'bg-orange-100 text-orange-700'}`}>
-                          {index + 1}
-                        </span>
-                        <span className="font-bold text-gray-700">{item[0]}</span>
-                      </div>
-                      <span className="text-gray-500 text-sm font-bold">{item[1]}回</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : <p className="text-gray-400 text-sm text-center py-4">データがありません</p>}
+                <div className="flex flex-col">
+                  <span className="text-lg font-bold text-gray-800 truncate">{topPeople[0][0]}</span>
+                  <span className="text-sm text-orange-500 font-bold">{topPeople[0][1]}回</span>
+                </div>
+              ) : <span className="text-gray-400 text-sm">記録なし</span>}
             </div>
+          </div>
 
+          <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+            <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-map-marker-alt text-green-500 mr-2"></i> よく行く場所 TOP 3</h3>
+            {topPlaces.length > 0 ? (
+              <ul className="space-y-3">
+                {topPlaces.map((item, index) => (
+                  <li key={item[0]} onClick={() => onOpenProfile({type: 'place', name: item[0]})} className="flex justify-between items-center bg-gray-50 hover:bg-gray-100 active:scale-95 transition-transform p-3 rounded-2xl cursor-pointer">
+                    <div className="flex items-center">
+                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${index === 0 ? 'bg-yellow-100 text-yellow-700' : index === 1 ? 'bg-gray-200 text-gray-600' : 'bg-orange-100 text-orange-700'}`}>
+                        {index + 1}
+                      </span>
+                      <span className="font-bold text-gray-700">{item[0]}</span>
+                    </div>
+                    <span className="text-gray-500 text-sm font-bold">{item[1]}回</span>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="text-gray-400 text-sm text-center py-4">データがありません</p>}
+          </div>
+
+          <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+            <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-users text-blue-500 mr-2"></i> よく会う人 TOP 3</h3>
+            {topPeople.length > 0 ? (
+              <ul className="space-y-3">
+                {topPeople.map((item, index) => (
+                  <li key={item[0]} onClick={() => onOpenProfile({type: 'person', name: item[0]})} className="flex justify-between items-center bg-gray-50 hover:bg-gray-100 active:scale-95 transition-transform p-3 rounded-2xl cursor-pointer">
+                    <div className="flex items-center">
+                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${index === 0 ? 'bg-yellow-100 text-yellow-700' : index === 1 ? 'bg-gray-200 text-gray-600' : 'bg-orange-100 text-orange-700'}`}>
+                        {index + 1}
+                      </span>
+                      <span className="font-bold text-gray-700">{item[0]}</span>
+                    </div>
+                    <span className="text-gray-500 text-sm font-bold">{item[1]}回</span>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="text-gray-400 text-sm text-center py-4">データがありません</p>}
           </div>
         </div>
       );
