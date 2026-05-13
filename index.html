@@ -17,6 +17,9 @@
   
   <!-- Babel (ブラウザ上でReactコードを翻訳するツール) -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- X(Twitter)公式埋め込みウィジェット -->
+  <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 
   <style>
     body { -webkit-tap-highlight-color: transparent; }
@@ -73,7 +76,49 @@
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     };
 
-    // 画像圧縮処理 (画質とサイズのバランスを調整)
+    // テキストからX(Twitter)のURLを抽出する
+    const extractTweetUrls = (text) => {
+      if (!text) return [];
+      // x.com と twitter.com の両方に対応
+      const regex = /https?:\/\/(?:twitter\.com|x\.com)\/[a-zA-Z0-9_]+\/status\/[0-9]+/g;
+      return Array.from(new Set(text.match(regex) || []));
+    };
+
+    // X(Twitter)の埋め込みプレビューコンポーネント
+    function TweetEmbed({ url }) {
+      const containerRef = useRef(null);
+
+      useEffect(() => {
+        const loadTwitterWidget = () => {
+          if (window.twttr && containerRef.current) {
+            window.twttr.widgets.load(containerRef.current);
+          }
+        };
+
+        if (!window.twttr) {
+          const script = document.createElement('script');
+          script.src = "https://platform.twitter.com/widgets.js";
+          script.async = true;
+          script.onload = loadTwitterWidget;
+          document.body.appendChild(script);
+        } else {
+          loadTwitterWidget();
+        }
+      }, [url]);
+
+      // X.com だと埋め込みウィジェットが反応しない事があるため、twitter.comに置換する
+      const embedUrl = url.replace('x.com', 'twitter.com');
+
+      return (
+        <div ref={containerRef} className="w-full flex justify-center my-3 min-h-[100px] bg-gray-50 rounded-xl items-center text-gray-400 text-xs overflow-hidden">
+          <blockquote className="twitter-tweet" data-dnt="true" data-theme="light">
+            <a href={embedUrl}>Loading Tweet...</a>
+          </blockquote>
+        </div>
+      );
+    }
+
+    // 画像圧縮処理
     const compressImage = (file) => {
       return new Promise((resolve) => {
         const reader = new FileReader();
@@ -81,7 +126,7 @@
           const img = new Image();
           img.onload = () => {
             const canvas = document.createElement('canvas');
-            const MAX_WIDTH = 600; // 少し大きく
+            const MAX_WIDTH = 600; 
             const MAX_HEIGHT = 600;
             let width = img.width;
             let height = img.height;
@@ -94,7 +139,7 @@
             canvas.width = width; canvas.height = height;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', 0.6)); // 品質60%で圧縮
+            resolve(canvas.toDataURL('image/jpeg', 0.6));
           };
           img.src = e.target.result;
         };
@@ -233,17 +278,14 @@
       const [saveMessage, setSaveMessage] = useState('');
       const [isSaving, setIsSaving] = useState(false);
 
-      // アニメーション方向のステート
       const [slideEffect, setSlideEffect] = useState('animate-fade-in');
 
-      // スワイプ検知用のステートとRef
       const touchStartX = useRef(null);
       const touchStartY = useRef(null);
       const touchTime = useRef(null);
-      const minSwipeDistance = 50; // スワイプと判定する最小の移動距離
-      const maxSwipeTime = 300; // スワイプと判定する最大時間（ミリ秒）
+      const minSwipeDistance = 50; 
+      const maxSwipeTime = 300; 
 
-      // --- 日付移動ロジック（エフェクト付き） ---
       const handleNextDay = () => {
         setSlideEffect('animate-slide-left');
         setViewingDateStr(addDays(viewingDateStr, 1));
@@ -260,11 +302,9 @@
         setSlideEffect(tDate > vDate ? 'animate-slide-left' : 'animate-slide-right');
         setViewingDateStr(todayStr);
       };
-      // ------------------------------------
 
       const handleTouchStart = (e) => {
-        // 入力要素（textarea, input等）に触れている時はスワイプを開始しない
-        if (['TEXTAREA', 'INPUT', 'BUTTON', 'LABEL'].includes(e.target.tagName)) return;
+        if (['TEXTAREA', 'INPUT', 'BUTTON', 'LABEL', 'A'].includes(e.target.tagName)) return;
         
         touchStartX.current = e.targetTouches[0].clientX;
         touchStartY.current = e.targetTouches[0].clientY;
@@ -281,14 +321,10 @@
         const distanceY = touchStartY.current - touchEndY;
         const timeElapsed = Date.now() - touchTime.current;
         
-        // リセット
         touchStartX.current = null;
         touchStartY.current = null;
 
-        // 時間がかかりすぎている場合はただの「長押し/スクロール」とみなす
         if (timeElapsed > maxSwipeTime) return;
-
-        // 縦スクロール操作の場合はスワイプ移動とみなさない
         if (Math.abs(distanceY) > Math.abs(distanceX)) return;
 
         const isLeftSwipe = distanceX > minSwipeDistance;
@@ -301,17 +337,16 @@
         }
       };
 
-      // サジェスト用の頻出タグを抽出
       const popularPlaces = useMemo(() => {
         const map = {};
         entries.forEach(e => splitTags(e.where).forEach(p => map[p] = (map[p] || 0) + 1));
-        return Object.entries(map).sort((a, b) => b[1] - a[1]).map(e => e[0]).slice(0, 5); // 上位5件
+        return Object.entries(map).sort((a, b) => b[1] - a[1]).map(e => e[0]).slice(0, 5); 
       }, [entries]);
 
       const popularPeople = useMemo(() => {
         const map = {};
         entries.forEach(e => splitTags(e.withWhom).forEach(p => map[p] = (map[p] || 0) + 1));
-        return Object.entries(map).sort((a, b) => b[1] - a[1]).map(e => e[0]).slice(0, 5); // 上位5件
+        return Object.entries(map).sort((a, b) => b[1] - a[1]).map(e => e[0]).slice(0, 5); 
       }, [entries]);
 
       useEffect(() => {
@@ -373,6 +408,9 @@
 
       const [year, month, day] = viewingDateStr.split('-');
       const isToday = viewingDateStr === todayStr;
+      
+      // 入力中のテキストから抽出したXのURL
+      const inputTweetUrls = extractTweetUrls(what);
 
       return (
         <div 
@@ -380,7 +418,6 @@
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          {/* key に日付を設定することで、日付が変わるたびにエフェクトが発動します */}
           <div key={viewingDateStr} className={`${slideEffect} flex flex-col gap-4 pb-4`}>
             
             {!isGasLinked && (
@@ -389,7 +426,6 @@
               </div>
             )}
 
-            {/* 日付操作 */}
             <div className="flex items-center justify-between mt-2 bg-gray-50 rounded-2xl p-2 border border-gray-100">
               <button onClick={handlePrevDay} className="p-2 w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded-xl transition-colors">
                 <i className="fas fa-chevron-left"></i>
@@ -411,7 +447,6 @@
 
             <div className="space-y-5 bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-gray-100 relative">
               
-              {/* 気分と天気 */}
               <div className="flex justify-between items-center bg-gray-50 p-2 rounded-2xl">
                 <div className="flex gap-1">
                   {MOODS.map(m => (
@@ -427,15 +462,24 @@
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">できごと</label>
-                <textarea value={what} onChange={(e) => setWhat(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none text-base" rows="4" placeholder="どんな一日でしたか？" disabled={isSaving}/>
+                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center justify-between">
+                  <span>できごと</span>
+                  {inputTweetUrls.length > 0 && <span className="text-[10px] text-blue-500"><i className="fab fa-twitter"></i> Xのリンクを検知</span>}
+                </label>
+                <textarea value={what} onChange={(e) => setWhat(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none text-base" rows="4" placeholder="X(旧Twitter)のURLを貼ると、自動でツイートが表示されます！" disabled={isSaving}/>
+                
+                {/* ツイートプレビュー (入力中) */}
+                {inputTweetUrls.length > 0 && (
+                  <div className="flex flex-col gap-2 mt-2">
+                    {inputTweetUrls.map((url, i) => <TweetEmbed key={`input-${url}-${i}`} url={url} />)}
+                  </div>
+                )}
               </div>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center"><i className="fas fa-map-marker-alt mr-1"></i> 場所</label>
                   <input type="text" value={where} onChange={(e) => setWhere(e.target.value)} className="w-full p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="例: 自宅, 渋谷" disabled={isSaving} />
-                  {/* 場所のサジェスト */}
                   {popularPlaces.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">
                       {popularPlaces.map((p, i) => (
@@ -447,7 +491,6 @@
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center"><i className="fas fa-users mr-1"></i> 誰と</label>
                   <input type="text" value={withWhom} onChange={(e) => setWithWhom(e.target.value)} className="w-full p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="例: 家族, 山田さん" disabled={isSaving} />
-                  {/* 誰とのサジェスト */}
                   {popularPeople.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">
                       {popularPeople.map((p, i) => (
@@ -458,18 +501,17 @@
                 </div>
               </div>
 
-              {/* 画像アップロードUI (縦並びフル幅) */}
               <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center"><i className="fas fa-camera mr-1"></i> 写真 (最大3枚)</label>
                 <div className="flex flex-col gap-3">
                   {images.map((img, idx) => (
-                    <div key={idx} className="relative w-full aspect-video bg-gray-100 rounded-2xl overflow-hidden border border-gray-200">
+                    <div key={idx} className="relative w-full aspect-square bg-gray-100 rounded-2xl overflow-hidden border border-gray-200">
                       <img src={img} className="w-full h-full object-cover" />
                       <button onClick={() => handleRemoveImage(idx)} className="absolute top-3 right-3 bg-red-500/90 backdrop-blur-sm text-white rounded-full w-8 h-8 flex items-center justify-center shadow-lg active:scale-90 transition-transform"><i className="fas fa-times"></i></button>
                     </div>
                   ))}
                   {images.length < 3 && (
-                    <label className={`w-full aspect-[4/1] flex flex-col items-center justify-center bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl cursor-pointer hover:bg-gray-100 transition-colors ${isSaving ? 'opacity-50 pointer-events-none' : ''}`}>
+                    <label className={`w-full aspect-square flex flex-col items-center justify-center bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl cursor-pointer hover:bg-gray-100 transition-colors ${isSaving ? 'opacity-50 pointer-events-none' : ''}`}>
                       <i className="fas fa-plus text-gray-400 text-xl mb-1"></i>
                       <span className="text-xs text-gray-500 font-medium">写真をえらぶ</span>
                       <input type="file" accept="image/*" multiple onChange={handleImageChange} className="hidden" disabled={isSaving} />
@@ -502,6 +544,7 @@
                     const entryYear = entry.when.split('-')[0];
                     const places = splitTags(entry.where);
                     const people = splitTags(entry.withWhom);
+                    const tweetUrls = extractTweetUrls(entry.what);
 
                     return (
                       <div key={idx} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
@@ -516,13 +559,20 @@
                         {entry.images && entry.images.length > 0 && (
                           <div className="flex flex-col gap-2 mb-4">
                             {entry.images.map((img, i) => (
-                              <img key={i} src={img} className="w-full aspect-video object-cover rounded-2xl border border-gray-100" />
+                              <img key={i} src={img} className="w-full aspect-square object-cover rounded-2xl border border-gray-100" />
                             ))}
                           </div>
                         )}
 
                         <p className="text-gray-800 whitespace-pre-wrap text-[15px] leading-relaxed mb-4">{entry.what}</p>
                         
+                        {/* 過去のエントリのツイート表示 */}
+                        {tweetUrls.length > 0 && (
+                          <div className="flex flex-col gap-2 mb-4">
+                            {tweetUrls.map((url, i) => <TweetEmbed key={`past-${url}-${i}`} url={url} />)}
+                          </div>
+                        )}
+
                         {(places.length > 0 || people.length > 0) && (
                           <div className="flex flex-wrap gap-2">
                             {places.map((place, i) => <span key={`p-${i}`} className="inline-flex items-center px-2 py-1 bg-green-50 text-green-700 text-[10px] font-bold rounded-md border border-green-100"><i className="fas fa-map-marker-alt mr-1"></i> {place}</span>)}
@@ -558,6 +608,8 @@
         if (!selectedDate) return null;
         return entries.find(e => e.when === selectedDate) || null;
       }, [selectedDate, entries]);
+
+      const tweetUrls = selectedEntry ? extractTweetUrls(selectedEntry.what) : [];
 
       return (
         <div className="pb-10 bg-white animate-fade-in">
@@ -595,12 +647,18 @@
                       {selectedEntry.images && selectedEntry.images.length > 0 && (
                         <div className="flex flex-col gap-2 mb-4">
                           {selectedEntry.images.map((img, i) => (
-                            <img key={i} src={img} className="w-full aspect-video object-cover rounded-2xl border border-gray-100" />
+                            <img key={i} src={img} className="w-full aspect-square object-cover rounded-2xl border border-gray-100" />
                           ))}
                         </div>
                       )}
 
                       <p className="text-gray-800 whitespace-pre-wrap text-[15px] leading-relaxed mb-4">{selectedEntry.what}</p>
+
+                      {tweetUrls.length > 0 && (
+                        <div className="flex flex-col gap-2 mb-4">
+                          {tweetUrls.map((url, i) => <TweetEmbed key={`modal-${url}-${i}`} url={url} />)}
+                        </div>
+                      )}
 
                       <div className="flex flex-wrap gap-2 mb-4">
                         {splitTags(selectedEntry.where).map((place, i) => <span key={`p-${i}`} className="inline-flex items-center px-2 py-1 bg-green-50 text-green-700 text-xs font-bold rounded-md border border-green-100"><i className="fas fa-map-marker-alt mr-1"></i> {place}</span>)}
@@ -707,28 +765,39 @@
             ) : (
               <div className="space-y-6">
                 <p className="text-sm text-gray-500 mb-2">{filteredEntries.length}件見つかりました</p>
-                {filteredEntries.map((entry, idx) => (
-                  <div key={idx} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
-                    <div className="text-sm font-bold text-blue-600 mb-3 flex justify-between border-b border-gray-50 pb-2">
-                      {entry.when && entry.when.replace(/-/g, '/')}
-                      <span className="text-lg leading-none">{entry.mood} {entry.weather}</span>
-                    </div>
+                {filteredEntries.map((entry, idx) => {
+                  const tweetUrls = extractTweetUrls(entry.what);
 
-                    {entry.images && entry.images.length > 0 && (
-                      <div className="flex flex-col gap-2 mb-4">
-                        {entry.images.map((img, i) => (
-                          <img key={i} src={img} className="w-full aspect-video object-cover rounded-2xl border border-gray-100" />
-                        ))}
+                  return (
+                    <div key={idx} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
+                      <div className="text-sm font-bold text-blue-600 mb-3 flex justify-between border-b border-gray-50 pb-2">
+                        {entry.when && entry.when.replace(/-/g, '/')}
+                        <span className="text-lg leading-none">{entry.mood} {entry.weather}</span>
                       </div>
-                    )}
 
-                    <p className="text-gray-800 whitespace-pre-wrap text-[15px] leading-relaxed mb-4">{entry.what}</p>
-                    <div className="flex flex-wrap gap-2">
-                      {splitTags(entry.where).map((place, i) => <span key={`p-${i}`} className="inline-flex items-center px-2 py-1 bg-green-50 text-green-700 text-[10px] font-bold rounded-md border border-green-100"><i className="fas fa-map-marker-alt mr-1"></i> {place}</span>)}
-                      {splitTags(entry.withWhom).map((person, i) => <span key={`w-${i}`} className="inline-flex items-center px-2 py-1 bg-orange-50 text-orange-700 text-[10px] font-bold rounded-md border border-orange-100"><i className="fas fa-users mr-1"></i> {person}</span>)}
+                      {entry.images && entry.images.length > 0 && (
+                        <div className="flex flex-col gap-2 mb-4">
+                          {entry.images.map((img, i) => (
+                            <img key={i} src={img} className="w-full aspect-square object-cover rounded-2xl border border-gray-100" />
+                          ))}
+                        </div>
+                      )}
+
+                      <p className="text-gray-800 whitespace-pre-wrap text-[15px] leading-relaxed mb-4">{entry.what}</p>
+                      
+                      {tweetUrls.length > 0 && (
+                        <div className="flex flex-col gap-2 mb-4">
+                          {tweetUrls.map((url, i) => <TweetEmbed key={`search-${url}-${i}`} url={url} />)}
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap gap-2">
+                        {splitTags(entry.where).map((place, i) => <span key={`p-${i}`} className="inline-flex items-center px-2 py-1 bg-green-50 text-green-700 text-[10px] font-bold rounded-md border border-green-100"><i className="fas fa-map-marker-alt mr-1"></i> {place}</span>)}
+                        {splitTags(entry.withWhom).map((person, i) => <span key={`w-${i}`} className="inline-flex items-center px-2 py-1 bg-orange-50 text-orange-700 text-[10px] font-bold rounded-md border border-orange-100"><i className="fas fa-users mr-1"></i> {person}</span>)}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
