@@ -183,15 +183,21 @@
       }, []);
 
       const saveEntry = async (entry) => {
-        let newEntries = [...entries];
-        const existingIndex = newEntries.findIndex(e => e.when === entry.when);
-        
-        if (existingIndex >= 0) {
-          newEntries[existingIndex] = { ...newEntries[existingIndex], ...entry };
-        } else {
-          newEntries.unshift({ ...entry, id: Date.now().toString() });
-        }
-        setEntries(newEntries);
+        setEntries(prevEntries => {
+          let newEntries = [...prevEntries];
+          const existingIndex = newEntries.findIndex(e => e.when === entry.when);
+          
+          if (existingIndex >= 0) {
+            newEntries[existingIndex] = { ...newEntries[existingIndex], ...entry };
+          } else {
+            newEntries.unshift({ ...entry, id: Date.now().toString() });
+          }
+
+          if (!GAS_WEB_APP_URL) {
+            localStorage.setItem('multiYearDiaryEntries', JSON.stringify(newEntries));
+          }
+          return newEntries;
+        });
 
         if (GAS_WEB_APP_URL) {
           try {
@@ -202,8 +208,6 @@
           } catch (error) {
             console.error("保存に失敗しました:", error);
           }
-        } else {
-          localStorage.setItem('multiYearDiaryEntries', JSON.stringify(newEntries));
         }
       };
 
@@ -279,6 +283,47 @@
       const [isSaving, setIsSaving] = useState(false);
 
       const [slideEffect, setSlideEffect] = useState('animate-fade-in');
+
+      // --- 自動保存用の処理 ---
+      const stateRef = useRef({ what, where, withWhom, mood, weather, images, viewingDateStr, entries });
+      const onSaveRef = useRef(onSave);
+      
+      // 常に最新の入力状態を保持しておく
+      useEffect(() => {
+        stateRef.current = { what, where, withWhom, mood, weather, images, viewingDateStr, entries };
+        onSaveRef.current = onSave;
+      });
+
+      // 日付が変わる直前、またはタブが切り替わる直前に変更があれば自動保存
+      useEffect(() => {
+        return () => {
+          const state = stateRef.current;
+          const originalEntry = state.entries.find(e => e.when === state.viewingDateStr) || {};
+          
+          const isChanged = 
+            (originalEntry.what || '') !== state.what ||
+            (originalEntry.where || '') !== state.where ||
+            (originalEntry.withWhom || '') !== state.withWhom ||
+            (originalEntry.mood || '') !== state.mood ||
+            (originalEntry.weather || '') !== state.weather ||
+            JSON.stringify(originalEntry.images || []) !== JSON.stringify(state.images);
+
+          const hasContent = state.what || state.where || state.withWhom || state.mood || state.weather || state.images.length > 0;
+
+          if (isChanged && hasContent) {
+            onSaveRef.current({ 
+              when: state.viewingDateStr, 
+              what: state.what, 
+              where: state.where, 
+              withWhom: state.withWhom, 
+              mood: state.mood, 
+              weather: state.weather, 
+              images: state.images 
+            });
+          }
+        };
+      }, [viewingDateStr]); 
+      // -------------------------
 
       const touchStartX = useRef(null);
       const touchStartY = useRef(null);
