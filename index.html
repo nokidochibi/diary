@@ -27,6 +27,10 @@
     @keyframes zoomIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
     .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
     .animate-zoom-in { animation: zoomIn 0.2s ease-out forwards; }
+    
+    /* スクロールバー非表示（横スクロール用） */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans">
@@ -41,17 +45,48 @@
     // ==========================================
     const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz7l8C5gSJmO3EvrSey5wt7R3UyHgxcFwUenoCkd5hy9pFdtx3EN4VVy25_S-staX49/exec"; 
 
-    // カンマや読点で文字列を分割するユーティリティ関数
+    // 気分と天気の選択肢
+    const MOODS = ['😆', '😊', '😐', '😔', '😫'];
+    const WEATHERS = ['☀️', '☁️', '☔️', '⛄️'];
+
     const splitTags = (str) => {
       if (!str) return [];
       return str.split(/[,、]+/).map(s => s.trim()).filter(Boolean);
     };
 
-    // 日付の足し引きを行うユーティリティ関数
     const addDays = (dateStr, days) => {
       const date = new Date(dateStr);
       date.setDate(date.getDate() + days);
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    };
+
+    // 画像圧縮処理 (スプレッドシートの文字数制限対策のため小さく圧縮してBase64化)
+    const compressImage = (file) => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 400; // 制限対策で幅400pxに縮小
+            const MAX_HEIGHT = 400;
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+              if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+            } else {
+              if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
+            }
+            canvas.width = width; canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.5)); // 品質50%で圧縮
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
     };
 
     function App() {
@@ -145,41 +180,57 @@
               />
             )}
             {activeTab === 'search' && <SearchTab entries={entries} />}
+            {activeTab === 'insights' && <InsightsTab entries={entries} />}
           </main>
 
           <nav className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 flex justify-around items-center h-16 pb-safe z-40">
-            <button 
-              onClick={() => setActiveTab('home')} 
-              className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'home' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
-            >
+            <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'home' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
               <i className="fas fa-pen-to-square text-xl"></i>
               <span className="text-[10px] font-medium">入力</span>
             </button>
-            <button 
-              onClick={() => setActiveTab('calendar')} 
-              className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'calendar' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
-            >
+            <button onClick={() => setActiveTab('calendar')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'calendar' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
               <i className="fas fa-calendar text-xl"></i>
               <span className="text-[10px] font-medium">カレンダー</span>
             </button>
-            <button 
-              onClick={() => setActiveTab('search')} 
-              className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'search' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
-            >
+            <button onClick={() => setActiveTab('search')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'search' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
               <i className="fas fa-search text-xl"></i>
               <span className="text-[10px] font-medium">検索</span>
+            </button>
+            <button onClick={() => setActiveTab('insights')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'insights' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
+              <i className="fas fa-chart-pie text-xl"></i>
+              <span className="text-[10px] font-medium">振り返り</span>
             </button>
           </nav>
         </div>
       );
     }
 
+    // ==========================================
+    // 入力タブ
+    // ==========================================
     function HomeTab({ viewingDateStr, setViewingDateStr, todayStr, entries, onSave, isGasLinked }) {
       const [what, setWhat] = useState('');
       const [where, setWhere] = useState('');
       const [withWhom, setWithWhom] = useState('');
+      const [mood, setMood] = useState('');
+      const [weather, setWeather] = useState('');
+      const [images, setImages] = useState([]); // 画像用ステート追加
+      
       const [saveMessage, setSaveMessage] = useState('');
       const [isSaving, setIsSaving] = useState(false);
+
+      // サジェスト用の頻出タグを抽出
+      const popularPlaces = useMemo(() => {
+        const map = {};
+        entries.forEach(e => splitTags(e.where).forEach(p => map[p] = (map[p] || 0) + 1));
+        return Object.entries(map).sort((a, b) => b[1] - a[1]).map(e => e[0]).slice(0, 5); // 上位5件
+      }, [entries]);
+
+      const popularPeople = useMemo(() => {
+        const map = {};
+        entries.forEach(e => splitTags(e.withWhom).forEach(p => map[p] = (map[p] || 0) + 1));
+        return Object.entries(map).sort((a, b) => b[1] - a[1]).map(e => e[0]).slice(0, 5); // 上位5件
+      }, [entries]);
 
       useEffect(() => {
         const entry = entries.find(e => e.when === viewingDateStr);
@@ -187,10 +238,11 @@
           setWhat(entry.what || '');
           setWhere(entry.where || '');
           setWithWhom(entry.withWhom || '');
+          setMood(entry.mood || '');
+          setWeather(entry.weather || '');
+          setImages(entry.images || []); // 画像セット
         } else {
-          setWhat('');
-          setWhere('');
-          setWithWhom('');
+          setWhat(''); setWhere(''); setWithWhom(''); setMood(''); setWeather(''); setImages([]);
         }
       }, [viewingDateStr, entries]);
 
@@ -209,10 +261,32 @@
 
       const handleSave = async () => {
         setIsSaving(true);
-        await onSave({ when: viewingDateStr, what, where, withWhom });
+        await onSave({ when: viewingDateStr, what, where, withWhom, mood, weather, images });
         setIsSaving(false);
         setSaveMessage('保存しました');
         setTimeout(() => setSaveMessage(''), 3000);
+      };
+
+      const handleImageChange = async (e) => {
+        const files = Array.from(e.target.files);
+        const remainingSlots = 3 - images.length;
+        const filesToProcess = files.slice(0, remainingSlots);
+        
+        setIsSaving(true); // 圧縮中はボタンを無効化
+        const processedImages = await Promise.all(filesToProcess.map(compressImage));
+        setImages([...images, ...processedImages]);
+        setIsSaving(false);
+      };
+
+      const handleRemoveImage = (index) => {
+        setImages(images.filter((_, i) => i !== index));
+      };
+
+      const handleAddTag = (setter, currentVal, tag) => {
+        const tags = splitTags(currentVal);
+        if (!tags.includes(tag)) {
+          setter(tags.length > 0 ? `${currentVal}, ${tag}` : tag);
+        }
       };
 
       const [year, month, day] = viewingDateStr.split('-');
@@ -226,11 +300,11 @@
             </div>
           )}
 
+          {/* 日付操作 */}
           <div className="flex items-center justify-between mb-6 mt-2 bg-gray-50 rounded-2xl p-2 border border-gray-100">
             <button onClick={() => setViewingDateStr(addDays(viewingDateStr, -1))} className="p-2 w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded-xl">
               <i className="fas fa-chevron-left"></i>
             </button>
-            
             <div className="text-center flex flex-col items-center">
               <div className="flex items-center gap-2">
                 <h1 className="text-xl sm:text-2xl font-bold text-gray-800">{year}年{parseInt(month)}月{parseInt(day)}日</h1>
@@ -239,35 +313,79 @@
                 <button onClick={() => setViewingDateStr(todayStr)} className="text-xs text-blue-600 font-medium flex items-center mt-1 bg-blue-50 px-2 py-0.5 rounded-full">
                   <i className="fas fa-calendar-day mr-1"></i> 今日へ戻る
                 </button>
-              ) : (
-                <span className="text-xs text-gray-400 font-medium mt-1">今日</span>
-              )}
+              ) : <span className="text-xs text-gray-400 font-medium mt-1">今日</span>}
             </div>
-
             <button onClick={() => setViewingDateStr(addDays(viewingDateStr, 1))} className="p-2 w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded-xl">
               <i className="fas fa-chevron-right"></i>
             </button>
           </div>
 
-          <div className="space-y-4 bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-gray-100 relative">
+          <div className="space-y-5 bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-gray-100 relative">
+            
+            {/* 気分と天気 */}
+            <div className="flex justify-between items-center bg-gray-50 p-2 rounded-2xl">
+              <div className="flex gap-1">
+                {MOODS.map(m => (
+                  <button key={m} onClick={() => setMood(m)} className={`w-8 h-8 text-xl flex items-center justify-center rounded-full transition-all ${mood === m ? 'bg-white shadow-sm ring-2 ring-blue-400 scale-110' : 'opacity-60 hover:opacity-100 hover:bg-gray-200'}`}>{m}</button>
+                ))}
+              </div>
+              <div className="w-px h-6 bg-gray-300 mx-2"></div>
+              <div className="flex gap-1">
+                {WEATHERS.map(w => (
+                  <button key={w} onClick={() => setWeather(w)} className={`w-8 h-8 text-xl flex items-center justify-center rounded-full transition-all ${weather === w ? 'bg-white shadow-sm ring-2 ring-orange-400 scale-110' : 'opacity-60 hover:opacity-100 hover:bg-gray-200'}`}>{w}</button>
+                ))}
+              </div>
+            </div>
+
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">できごと (What)</label>
-              <textarea 
-                value={what}
-                onChange={(e) => setWhat(e.target.value)}
-                className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
-                rows="4" placeholder="どんな一日でしたか？" disabled={isSaving}
-              />
+              <label className="block text-sm font-medium text-gray-700 mb-1">できごと</label>
+              <textarea value={what} onChange={(e) => setWhat(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none text-base" rows="4" placeholder="どんな一日でしたか？" disabled={isSaving}/>
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center"><i className="fas fa-map-marker-alt mr-1"></i> 場所 (Where)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center"><i className="fas fa-map-marker-alt mr-1"></i> 場所</label>
                 <input type="text" value={where} onChange={(e) => setWhere(e.target.value)} className="w-full p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="例: 自宅, 渋谷" disabled={isSaving} />
+                {/* 場所のサジェスト */}
+                {popularPlaces.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {popularPlaces.map((p, i) => (
+                      <button key={i} onClick={() => handleAddTag(setWhere, where, p)} className="text-[10px] bg-green-50 text-green-700 px-2 py-1 rounded-md border border-green-100 hover:bg-green-100 whitespace-nowrap active:scale-95 transition-transform">+{p}</button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center"><i className="fas fa-users mr-1"></i> 誰と (With whom)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center"><i className="fas fa-users mr-1"></i> 誰と</label>
                 <input type="text" value={withWhom} onChange={(e) => setWithWhom(e.target.value)} className="w-full p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="例: 家族, 山田さん" disabled={isSaving} />
+                {/* 誰とのサジェスト */}
+                {popularPeople.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {popularPeople.map((p, i) => (
+                      <button key={i} onClick={() => handleAddTag(setWithWhom, withWhom, p)} className="text-[10px] bg-orange-50 text-orange-700 px-2 py-1 rounded-md border border-orange-100 hover:bg-orange-100 whitespace-nowrap active:scale-95 transition-transform">+{p}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 画像アップロードUI */}
+            <div className="mt-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center"><i className="fas fa-camera mr-1"></i> 写真 (最大3枚)</label>
+              <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+                {images.map((img, idx) => (
+                  <div key={idx} className="relative flex-shrink-0">
+                    <img src={img} className="w-20 h-20 object-cover rounded-xl border border-gray-200" />
+                    <button onClick={() => handleRemoveImage(idx)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-sm"><i className="fas fa-times"></i></button>
+                  </div>
+                ))}
+                {images.length < 3 && (
+                  <label className={`w-20 h-20 flex-shrink-0 flex flex-col items-center justify-center bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors ${isSaving ? 'opacity-50 pointer-events-none' : ''}`}>
+                    <i className="fas fa-plus text-gray-400 text-xl mb-1"></i>
+                    <span className="text-[10px] text-gray-500">追加</span>
+                    <input type="file" accept="image/*" multiple onChange={handleImageChange} className="hidden" disabled={isSaving} />
+                  </label>
+                )}
               </div>
             </div>
 
@@ -298,9 +416,23 @@
 
                   return (
                     <div key={idx} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-blue-400">
-                      <div className="text-lg font-bold text-blue-600 mb-2">{entryYear}年</div>
+                      <div className="flex justify-between items-center mb-2">
+                        <div className="text-lg font-bold text-blue-600">{entryYear}年</div>
+                        <div className="flex gap-1 text-lg">
+                          {entry.weather && <span>{entry.weather}</span>}
+                          {entry.mood && <span>{entry.mood}</span>}
+                        </div>
+                      </div>
                       <p className="text-gray-800 whitespace-pre-wrap text-sm leading-relaxed mb-3">{entry.what}</p>
                       
+                      {entry.images && entry.images.length > 0 && (
+                        <div className="flex gap-2 mt-2 mb-3 overflow-x-auto no-scrollbar pb-1">
+                          {entry.images.map((img, i) => (
+                            <img key={i} src={img} className="w-16 h-16 object-cover rounded-lg border border-gray-100 flex-shrink-0" />
+                          ))}
+                        </div>
+                      )}
+
                       {(places.length > 0 || people.length > 0) && (
                         <div className="flex flex-wrap gap-2">
                           {places.map((place, i) => <span key={`p-${i}`} className="inline-flex items-center px-2 py-1 bg-green-50 text-green-700 text-[10px] font-medium rounded-md border border-green-100"><i className="fas fa-map-marker-alt mr-1"></i> {place}</span>)}
@@ -317,14 +449,18 @@
       );
     }
 
+    // ==========================================
+    // カレンダータブ
+    // ==========================================
     function CalendarTab({ entries, todayStr, onSelectDate }) {
       const [currentYear, setCurrentYear] = useState(new Date(todayStr).getFullYear());
       const [selectedDate, setSelectedDate] = useState(null);
       const months = Array.from({ length: 12 }, (_, i) => i);
 
+      // 日付をキーにしてエントリー全体を保持する（気分絵文字の表示のため）
       const entryDatesMap = useMemo(() => {
         const map = {};
-        entries.forEach(e => { if(e.when) map[e.when] = true; });
+        entries.forEach(e => { if(e.when && !map[e.when]) map[e.when] = e; });
         return map;
       }, [entries]);
 
@@ -361,7 +497,20 @@
                 <div className="p-6">
                   {selectedEntry ? (
                     <>
+                      <div className="flex gap-2 text-2xl mb-3">
+                        {selectedEntry.weather && <span>{selectedEntry.weather}</span>}
+                        {selectedEntry.mood && <span>{selectedEntry.mood}</span>}
+                      </div>
                       <p className="text-gray-800 whitespace-pre-wrap text-sm leading-relaxed mb-4">{selectedEntry.what}</p>
+                      
+                      {selectedEntry.images && selectedEntry.images.length > 0 && (
+                        <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar pb-1">
+                          {selectedEntry.images.map((img, i) => (
+                            <img key={i} src={img} className="w-20 h-20 object-cover rounded-xl border border-gray-100 flex-shrink-0" />
+                          ))}
+                        </div>
+                      )}
+
                       <div className="flex flex-wrap gap-2 mb-4">
                         {splitTags(selectedEntry.where).map((place, i) => <span key={`p-${i}`} className="inline-flex items-center px-2 py-1 bg-green-50 text-green-700 text-xs font-medium rounded-md border border-green-100"><i className="fas fa-map-marker-alt mr-1"></i> {place}</span>)}
                         {splitTags(selectedEntry.withWhom).map((person, i) => <span key={`w-${i}`} className="inline-flex items-center px-2 py-1 bg-orange-50 text-orange-700 text-xs font-medium rounded-md border border-orange-100"><i className="fas fa-users mr-1"></i> {person}</span>)}
@@ -393,12 +542,22 @@
               if (!day) return <div key={`empty-${index}`} />;
               const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
               const isToday = dateStr === todayStr;
-              const hasEntry = !!entryDatesMap[dateStr];
+              const entry = entryDatesMap[dateStr];
+              const hasEntry = !!entry;
+
               return (
-                <button key={dateStr} onClick={() => onDayClick(dateStr)} className="relative flex flex-col items-center justify-center w-full aspect-square text-xs font-medium">
-                  <span className={`flex items-center justify-center w-6 h-6 rounded-full ${isToday ? 'bg-red-500 text-white font-bold' : 'text-gray-800'}`}>{day}</span>
-                  {hasEntry && !isToday && <div className="absolute bottom-0 w-1 h-1 bg-gray-400 rounded-full"></div>}
-                  {hasEntry && isToday && <div className="absolute bottom-0 w-1 h-1 bg-white rounded-full"></div>}
+                <button key={dateStr} onClick={() => onDayClick(dateStr)} className="relative flex flex-col items-center justify-center w-full aspect-square text-xs font-medium active:scale-90 transition-transform">
+                  <span className={`flex items-center justify-center w-6 h-6 rounded-full ${isToday ? 'bg-red-500 text-white font-bold shadow-sm' : 'text-gray-800'}`}>{day}</span>
+                  {hasEntry && !isToday && (
+                    <div className="absolute -bottom-1 text-[10px] leading-none opacity-80 pointer-events-none">
+                      {entry.mood ? entry.mood : <div className="w-1 h-1 bg-gray-400 rounded-full mx-auto mb-1"></div>}
+                    </div>
+                  )}
+                  {hasEntry && isToday && (
+                    <div className="absolute -bottom-1 text-[10px] leading-none opacity-100 pointer-events-none">
+                      {entry.mood ? entry.mood : <div className="w-1 h-1 bg-white rounded-full mx-auto mb-1"></div>}
+                    </div>
+                  )}
                 </button>
               );
             })}
@@ -407,6 +566,9 @@
       );
     }
 
+    // ==========================================
+    // 検索タブ
+    // ==========================================
     function SearchTab({ entries }) {
       const [query, setQuery] = useState('');
 
@@ -442,7 +604,7 @@
               <div className="mb-8">
                 <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center"><i className="fas fa-users mr-1"></i> 人で絞り込む</h3>
                 <div className="flex flex-wrap gap-2">
-                  {popularPeople.map((person, idx) => <button key={idx} onClick={() => setQuery(person)} className="px-3 py-1.5 bg-orange-50 text-orange-700 text-sm font-medium rounded-xl border border-orange-100">{person}</button>)}
+                  {popularPeople.map((person, idx) => <button key={idx} onClick={() => setQuery(person)} className="px-3 py-1.5 bg-orange-50 text-orange-700 text-sm font-medium rounded-xl border border-orange-100 active:scale-95">{person}</button>)}
                 </div>
               </div>
             )}
@@ -456,8 +618,20 @@
                 <p className="text-sm text-gray-500 mb-2">{filteredEntries.length}件見つかりました</p>
                 {filteredEntries.map((entry, idx) => (
                   <div key={idx} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                    <div className="text-sm font-bold text-blue-600 mb-2">{entry.when && entry.when.replace(/-/g, '/')}</div>
+                    <div className="text-sm font-bold text-blue-600 mb-2 flex justify-between">
+                      {entry.when && entry.when.replace(/-/g, '/')}
+                      <span className="text-lg leading-none">{entry.mood} {entry.weather}</span>
+                    </div>
                     <p className="text-gray-800 whitespace-pre-wrap text-sm leading-relaxed mb-3">{entry.what}</p>
+                    
+                    {entry.images && entry.images.length > 0 && (
+                      <div className="flex gap-2 mb-3 overflow-x-auto no-scrollbar pb-1">
+                        {entry.images.map((img, i) => (
+                          <img key={i} src={img} className="w-16 h-16 object-cover rounded-lg border border-gray-100 flex-shrink-0" />
+                        ))}
+                      </div>
+                    )}
+
                     <div className="flex flex-wrap gap-2">
                       {splitTags(entry.where).map((place, i) => <span key={`p-${i}`} className="inline-flex items-center px-2 py-1 bg-green-50 text-green-700 text-[10px] font-medium rounded-md border border-green-100"><i className="fas fa-map-marker-alt mr-1"></i> {place}</span>)}
                       {splitTags(entry.withWhom).map((person, i) => <span key={`w-${i}`} className="inline-flex items-center px-2 py-1 bg-orange-50 text-orange-700 text-[10px] font-medium rounded-md border border-orange-100"><i className="fas fa-users mr-1"></i> {person}</span>)}
@@ -466,6 +640,118 @@
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // インサイト（振り返り）タブ
+    // ==========================================
+    function InsightsTab({ entries }) {
+      // 統計の計算
+      const totalEntries = entries.filter(e => e.what || e.where || e.withWhom).length;
+
+      const { topPlaces, topPeople, moodCounts } = useMemo(() => {
+        const placeMap = {};
+        const peopleMap = {};
+        const moodMap = {};
+
+        entries.forEach(e => {
+          splitTags(e.where).forEach(p => placeMap[p] = (placeMap[p] || 0) + 1);
+          splitTags(e.withWhom).forEach(p => peopleMap[p] = (peopleMap[p] || 0) + 1);
+          if (e.mood) moodMap[e.mood] = (moodMap[e.mood] || 0) + 1;
+        });
+
+        const sortMap = (map) => Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 3); // Top 3
+
+        return {
+          topPlaces: sortMap(placeMap),
+          topPeople: sortMap(peopleMap),
+          moodCounts: Object.entries(moodMap).sort((a, b) => b[1] - a[1])
+        };
+      }, [entries]);
+
+      return (
+        <div className="p-4 max-w-lg mx-auto animate-fade-in bg-gray-50 min-h-screen">
+          <div className="pt-4 pb-6">
+            <h1 className="text-2xl font-bold text-gray-800 mb-1">振り返り</h1>
+            <p className="text-sm text-gray-500">これまでのあなたの記録の集計です。</p>
+          </div>
+
+          <div className="space-y-6">
+            {/* 累計記録数 */}
+            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-3xl p-6 text-white shadow-md">
+              <h3 className="text-blue-100 font-medium mb-1"><i className="fas fa-book-open mr-2"></i>書いた日数</h3>
+              <div className="flex items-baseline">
+                <span className="text-5xl font-bold">{totalEntries}</span>
+                <span className="ml-2 text-lg opacity-80">日</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {/* 一番多い気分 */}
+              <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+                <h3 className="text-gray-500 text-xs font-bold mb-3"><i className="fas fa-smile mr-1"></i> 多い気分</h3>
+                {moodCounts.length > 0 ? (
+                  <div className="flex items-center justify-between">
+                    <span className="text-4xl">{moodCounts[0][0]}</span>
+                    <span className="text-lg font-bold text-gray-700">{moodCounts[0][1]}回</span>
+                  </div>
+                ) : <span className="text-gray-400 text-sm">記録なし</span>}
+              </div>
+
+              {/* よく遊ぶ人1位 */}
+              <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+                <h3 className="text-gray-500 text-xs font-bold mb-3"><i className="fas fa-crown text-yellow-500 mr-1"></i> ベストパートナー</h3>
+                {topPeople.length > 0 ? (
+                  <div className="flex flex-col">
+                    <span className="text-lg font-bold text-gray-800 truncate">{topPeople[0][0]}</span>
+                    <span className="text-sm text-orange-500 font-medium">{topPeople[0][1]}回</span>
+                  </div>
+                ) : <span className="text-gray-400 text-sm">記録なし</span>}
+              </div>
+            </div>
+
+            {/* ランキングセクション */}
+            <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+              <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-map-marker-alt text-green-500 mr-2"></i> よく行く場所 TOP 3</h3>
+              {topPlaces.length > 0 ? (
+                <ul className="space-y-3">
+                  {topPlaces.map((item, index) => (
+                    <li key={item[0]} className="flex justify-between items-center bg-gray-50 p-3 rounded-2xl">
+                      <div className="flex items-center">
+                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${index === 0 ? 'bg-yellow-100 text-yellow-700' : index === 1 ? 'bg-gray-200 text-gray-600' : 'bg-orange-100 text-orange-700'}`}>
+                          {index + 1}
+                        </span>
+                        <span className="font-medium text-gray-700">{item[0]}</span>
+                      </div>
+                      <span className="text-gray-500 text-sm font-bold">{item[1]}回</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="text-gray-400 text-sm text-center py-4">データがありません</p>}
+            </div>
+
+            <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+              <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-users text-blue-500 mr-2"></i> よく会う人 TOP 3</h3>
+              {topPeople.length > 0 ? (
+                <ul className="space-y-3">
+                  {topPeople.map((item, index) => (
+                    <li key={item[0]} className="flex justify-between items-center bg-gray-50 p-3 rounded-2xl">
+                      <div className="flex items-center">
+                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${index === 0 ? 'bg-yellow-100 text-yellow-700' : index === 1 ? 'bg-gray-200 text-gray-600' : 'bg-orange-100 text-orange-700'}`}>
+                          {index + 1}
+                        </span>
+                        <span className="font-medium text-gray-700">{item[0]}</span>
+                      </div>
+                      <span className="text-gray-500 text-sm font-bold">{item[1]}回</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="text-gray-400 text-sm text-center py-4">データがありません</p>}
+            </div>
+
           </div>
         </div>
       );
