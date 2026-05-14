@@ -325,7 +325,7 @@
               />
             )}
             {activeTab === 'search' && <SearchTab entries={entries} onOpenProfile={setSelectedProfile} onSelectDate={(date) => { setViewingDateStr(date); setActiveTab('home'); }} peopleProfiles={peopleProfiles} />}
-            {activeTab === 'insights' && <InsightsTab entries={entries} onOpenProfile={setSelectedProfile} onSelectDate={(date) => { setViewingDateStr(date); setActiveTab('home'); }} />}
+            {activeTab === 'insights' && <InsightsTab entries={entries} onOpenProfile={setSelectedProfile} onSelectDate={(date) => { setViewingDateStr(date); setActiveTab('home'); }} peopleProfiles={peopleProfiles} />}
           </main>
 
           <nav className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 flex justify-around items-center h-16 pb-safe z-40">
@@ -822,9 +822,15 @@
                   {popularPlaces.map((p, i) => (
                     <button key={`sp-${i}`} onClick={() => handleAddTag(setWhere, where, p)} className="text-[10px] bg-green-50 text-green-700 px-2 py-1 rounded-md border border-green-100 hover:bg-green-100 whitespace-nowrap active:scale-95 transition-transform">+{p}</button>
                   ))}
-                  {popularPeople.map((p, i) => (
-                    <button key={`sw-${i}`} onClick={() => handleAddTag(setWithWhom, withWhom, p)} className="text-[10px] bg-orange-50 text-orange-700 px-2 py-1 rounded-md border border-orange-100 hover:bg-orange-100 whitespace-nowrap active:scale-95 transition-transform">+{p}</button>
-                  ))}
+                  {popularPeople.map((p, i) => {
+                    const xUser = peopleProfiles[p]?.xUsername;
+                    return (
+                      <button key={`sw-${i}`} onClick={() => handleAddTag(setWithWhom, withWhom, p)} className="flex items-center text-[10px] bg-orange-50 text-orange-700 px-2 py-1 rounded-md border border-orange-100 hover:bg-orange-100 whitespace-nowrap active:scale-95 transition-transform">
+                        {xUser ? <img src={`https://unavatar.io/twitter/${xUser}`} className="w-3 h-3 rounded-full mr-1 object-cover border border-orange-200" loading="lazy" onError={(e)=>{e.target.style.display='none'}} /> : null}
+                        +{p}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
 
@@ -1132,11 +1138,18 @@
                   <div>
                     <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center"><i className="fas fa-users mr-1"></i> 人で絞り込む</h3>
                     <div className="flex flex-wrap gap-2">
-                      {popularPeople.map((person, idx) => (
-                        <button key={idx} onClick={() => { setFilterTag({ type: 'person', value: person }); setQuery(''); }} className="px-3 py-1.5 bg-orange-50 text-orange-700 text-sm font-bold rounded-xl border border-orange-100 active:scale-95 shadow-sm">
-                          <i className="fas fa-user text-xs mr-1 opacity-50"></i> {person}
-                        </button>
-                      ))}
+                      {popularPeople.map((person, idx) => {
+                        const xUser = peopleProfiles[person]?.xUsername;
+                        return (
+                          <button key={idx} onClick={() => { setFilterTag({ type: 'person', value: person }); setQuery(''); }} className="flex items-center px-3 py-1.5 bg-orange-50 text-orange-700 text-sm font-bold rounded-xl border border-orange-100 active:scale-95 shadow-sm">
+                            {xUser ? (
+                              <img src={`https://unavatar.io/twitter/${xUser}`} className="w-4 h-4 rounded-full mr-1.5 object-cover border border-orange-200" loading="lazy" onError={(e)=>{e.target.style.display='none'; e.target.nextSibling.style.display='inline-block';}} />
+                            ) : null}
+                            <i className="fas fa-user text-xs mr-1.5 opacity-50" style={{ display: xUser ? 'none' : 'inline-block' }}></i> 
+                            {person}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -1195,7 +1208,7 @@
     // ==========================================
     // インサイト（振り返り）タブ
     // ==========================================
-    function InsightsTab({ entries, onOpenProfile, onSelectDate }) {
+    function InsightsTab({ entries, onOpenProfile, onSelectDate, peopleProfiles }) {
       const [viewMode, setViewMode] = useState('monthly'); // 'monthly' | 'all'
 
       return (
@@ -1221,16 +1234,16 @@
 
           <div className="mt-4">
             {viewMode === 'monthly' ? (
-              <MonthlyInsights entries={entries} onOpenProfile={onOpenProfile} />
+              <MonthlyInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
             ) : (
-              <AllTimeInsights entries={entries} onOpenProfile={onOpenProfile} />
+              <AllTimeInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
             )}
           </div>
         </div>
       );
     }
 
-    function MonthlyInsights({ entries, onOpenProfile }) {
+    function MonthlyInsights({ entries, onOpenProfile, peopleProfiles }) {
       const [targetDate, setTargetDate] = useState(new Date());
 
       const year = targetDate.getFullYear();
@@ -1317,11 +1330,15 @@
                 <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
                   <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-users text-orange-500 mr-2"></i>よく遊んだ人</h3>
                   <div className="flex flex-wrap gap-2">
-                     {stats.topPeople.map(([name, count]) => (
-                       <button key={name} onClick={() => onOpenProfile({type: 'person', name})} className="px-3 py-1.5 bg-orange-50 text-orange-700 text-xs font-bold rounded-xl border border-orange-100 active:scale-95 shadow-sm flex items-center">
-                         {name} <span className="opacity-50 ml-1.5 font-medium">{count}回</span>
-                       </button>
-                     ))}
+                     {stats.topPeople.map(([name, count]) => {
+                       const xUser = peopleProfiles[name]?.xUsername;
+                       return (
+                         <button key={name} onClick={() => onOpenProfile({type: 'person', name})} className="px-3 py-1.5 bg-orange-50 text-orange-700 text-xs font-bold rounded-xl border border-orange-100 active:scale-95 shadow-sm flex items-center">
+                           {xUser ? <img src={`https://unavatar.io/twitter/${xUser}`} className="w-3.5 h-3.5 rounded-full mr-1.5 object-cover border border-orange-200" loading="lazy" onError={(e)=>{e.target.style.display='none'}} /> : null}
+                           {name} <span className="opacity-50 ml-1.5 font-medium">{count}回</span>
+                         </button>
+                       );
+                     })}
                   </div>
                 </div>
               )}
@@ -1355,7 +1372,7 @@
       );
     }
 
-    function AllTimeInsights({ entries, onOpenProfile }) {
+    function AllTimeInsights({ entries, onOpenProfile, peopleProfiles }) {
       const totalEntries = entries.filter(e => e.what || e.where || e.withWhom || (e.images && e.images.length > 0)).length;
 
       const { topPlaces, topPeople, moodCounts } = useMemo(() => {
@@ -1433,17 +1450,22 @@
             <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-users text-blue-500 mr-2"></i> よく会う人 TOP 3</h3>
             {topPeople.length > 0 ? (
               <ul className="space-y-3">
-                {topPeople.map((item, index) => (
-                  <li key={item[0]} onClick={() => onOpenProfile({type: 'person', name: item[0]})} className="flex justify-between items-center bg-gray-50 hover:bg-gray-100 active:scale-95 transition-transform p-3 rounded-2xl cursor-pointer">
-                    <div className="flex items-center">
-                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${index === 0 ? 'bg-yellow-100 text-yellow-700' : index === 1 ? 'bg-gray-200 text-gray-600' : 'bg-orange-100 text-orange-700'}`}>
-                        {index + 1}
-                      </span>
-                      <span className="font-bold text-gray-700">{item[0]}</span>
-                    </div>
-                    <span className="text-gray-500 text-sm font-bold">{item[1]}回</span>
-                  </li>
-                ))}
+                {topPeople.map((item, index) => {
+                  const name = item[0];
+                  const xUser = peopleProfiles[name]?.xUsername;
+                  return (
+                    <li key={name} onClick={() => onOpenProfile({type: 'person', name: name})} className="flex justify-between items-center bg-gray-50 hover:bg-gray-100 active:scale-95 transition-transform p-3 rounded-2xl cursor-pointer">
+                      <div className="flex items-center">
+                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${index === 0 ? 'bg-yellow-100 text-yellow-700' : index === 1 ? 'bg-gray-200 text-gray-600' : 'bg-orange-100 text-orange-700'}`}>
+                          {index + 1}
+                        </span>
+                        {xUser ? <img src={`https://unavatar.io/twitter/${xUser}`} className="w-6 h-6 rounded-full mr-2 object-cover border border-orange-200" loading="lazy" onError={(e)=>{e.target.style.display='none'}} /> : null}
+                        <span className="font-bold text-gray-700">{name}</span>
+                      </div>
+                      <span className="text-gray-500 text-sm font-bold">{item[1]}回</span>
+                    </li>
+                  )
+                })}
               </ul>
             ) : <p className="text-gray-400 text-sm text-center py-4">データがありません</p>}
           </div>
