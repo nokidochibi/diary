@@ -47,10 +47,10 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useMemo, useRef } = React;
+    const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
     // ==========================================
-    // ★ ここにGASのURLを貼り付けてください
+    // ★ 新しいGASのURL
     // ==========================================
     const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwyz284BmLd1E5LSBjRFeYs4tjeo3Kfe85Fl4XsOhVjV72TsTsdjUBmseM82cRaj0fc/exec"; 
 
@@ -170,7 +170,7 @@
 
     function App() {
       const [activeTab, setActiveTab] = useState('home');
-      const [searchTabKey, setSearchTabKey] = useState(0); // 検索タブリセット用キー
+      const [searchTabKey, setSearchTabKey] = useState(0); 
 
       const [entries, setEntries] = useState([]);
       const [isLoading, setIsLoading] = useState(false);
@@ -192,11 +192,12 @@
               const response = await fetch(`${GAS_WEB_APP_URL}?t=${new Date().getTime()}`);
               const data = await response.json();
               
+              // ★空の日付を除外してソート時のエラーを防止
               if (Array.isArray(data)) {
-                const sortedData = data.sort((a, b) => new Date(b.when) - new Date(a.when));
+                const sortedData = data.filter(e => e.when).sort((a, b) => new Date(b.when) - new Date(a.when));
                 setEntries(sortedData);
               } else {
-                const sortedData = data.entries.sort((a, b) => new Date(b.when) - new Date(a.when));
+                const sortedData = data.entries.filter(e => e.when).sort((a, b) => new Date(b.when) - new Date(a.when));
                 setEntries(sortedData);
                 if (data.profiles) setPeopleProfiles(data.profiles);
               }
@@ -219,7 +220,6 @@
         }
       }, []);
 
-      // プロフィールの更新関数（GASへ保存リクエスト送信）
       const updatePersonProfile = async (name, data) => {
         setPeopleProfiles(prev => {
           const newProfiles = { ...prev, [name]: { ...(prev[name] || {}), ...data } };
@@ -231,7 +231,7 @@
           try {
             await fetch(GAS_WEB_APP_URL, {
               method: 'POST',
-              headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // 安定化のため追加
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
               body: JSON.stringify({ type: 'profile', name: name, xUsername: data.xUsername }),
             });
           } catch (error) {
@@ -240,33 +240,41 @@
         }
       };
 
-      const saveEntry = async (entry) => {
+      // ★保存処理のエラーハンドリングを強化し、結果を返す
+      const saveEntry = useCallback(async (entry) => {
+        // UIの即時反映 (Optimistic Update)
         setEntries(prevEntries => {
           let newEntries = [...prevEntries];
           const existingIndex = newEntries.findIndex(e => e.when === entry.when);
-          
           if (existingIndex >= 0) {
             newEntries[existingIndex] = { ...newEntries[existingIndex], ...entry };
           } else {
             newEntries.unshift({ ...entry, id: Date.now().toString() });
           }
-
           if (!GAS_WEB_APP_URL) localStorage.setItem('multiYearDiaryEntries', JSON.stringify(newEntries));
           return newEntries;
         });
 
         if (GAS_WEB_APP_URL) {
           try {
-            await fetch(GAS_WEB_APP_URL, {
+            const response = await fetch(GAS_WEB_APP_URL, {
               method: 'POST',
-              headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // 安定化のため追加
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
               body: JSON.stringify(entry), 
             });
+            const resData = await response.json();
+            
+            if (resData.status === "error") {
+              console.error("GASエラー:", resData.message);
+              return { error: resData.message };
+            }
           } catch (error) {
-            console.error("保存に失敗しました:", error);
+            console.error("通信エラー:", error);
+            return { error: "ネットワーク通信に失敗しました" };
           }
         }
-      };
+        return { success: true };
+      }, []);
 
       return (
         <div className="min-h-screen bg-white flex flex-col relative">
@@ -304,7 +312,7 @@
             )}
             {activeTab === 'search' && (
               <SearchTab 
-                key={searchTabKey} // キー変更でコンポーネントを初期化
+                key={searchTabKey}
                 entries={entries} 
                 onOpenProfile={setSelectedProfile} 
                 onSelectDate={(date) => { setViewingDateStr(date); setActiveTab('home'); }} 
@@ -330,7 +338,7 @@
               <span className="text-[10px] font-medium">カレンダー</span>
             </button>
             <button onClick={() => {
-              if (activeTab === 'search') setSearchTabKey(prev => prev + 1); // 検索タブを開いている時はリセット
+              if (activeTab === 'search') setSearchTabKey(prev => prev + 1); 
               setActiveTab('search');
             }} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'search' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
               <i className="fas fa-search text-xl"></i>
@@ -554,7 +562,6 @@
       const [slideEffect, setSlideEffect] = useState('animate-fade-in');
       const [lastLoadedDate, setLastLoadedDate] = useState(null);
 
-      // 初回ロードや日付切り替え時のステート反映
       useEffect(() => {
         const entry = entries.find(e => e.when === viewingDateStr);
         if (viewingDateStr !== lastLoadedDate || (entry && lastLoadedDate === null)) {
@@ -570,7 +577,6 @@
         }
       }, [viewingDateStr, entries, lastLoadedDate]);
 
-      // スワイプ時やタブ切り替え前の確実な強制保存
       const forceSave = () => {
         const entry = entries.find(e => e.when === viewingDateStr);
         const isChanged = 
@@ -586,7 +592,6 @@
         }
       };
 
-      // デバウンス自動保存
       useEffect(() => {
         const entry = entries.find(e => e.when === viewingDateStr);
         const isChanged = 
@@ -598,10 +603,15 @@
         const hasContent = what || where || withWhom || images.length > 0;
 
         if (isChanged && hasContent) {
-          const timerId = setTimeout(() => {
-            onSave({ when: viewingDateStr, what, where, withWhom, images });
-            setSaveMessage('自動保存しました');
-            setTimeout(() => setSaveMessage(''), 2000);
+          const timerId = setTimeout(async () => {
+            // 自動保存のエラー結果もキャッチする
+            const res = await onSave({ when: viewingDateStr, what, where, withWhom, images });
+            if (res && res.error) {
+              setSaveMessage('自動保存エラー: ' + res.error);
+            } else {
+              setSaveMessage('自動保存しました');
+              setTimeout(() => setSaveMessage(''), 2000);
+            }
           }, 1500);
           return () => clearTimeout(timerId);
         }
@@ -685,10 +695,15 @@
 
       const handleSave = async () => {
         setIsSaving(true);
-        await onSave({ when: viewingDateStr, what, where, withWhom, images });
+        const res = await onSave({ when: viewingDateStr, what, where, withWhom, images });
         setIsSaving(false);
-        setSaveMessage('保存しました');
-        setTimeout(() => setSaveMessage(''), 3000);
+        
+        if (res && res.error) {
+          setSaveMessage('保存エラー: ' + res.error);
+        } else {
+          setSaveMessage('保存しました');
+          setTimeout(() => setSaveMessage(''), 3000);
+        }
       };
 
       const handleImageChange = async (e) => {
@@ -813,7 +828,7 @@
 
               {/* 保存ボタン */}
               <div className="pt-2 flex items-center justify-between border-t border-gray-50">
-                <span className="text-sm text-green-600 font-medium">{saveMessage}</span>
+                <span className={`text-xs font-bold w-1/2 leading-tight ${saveMessage.includes('エラー') ? 'text-red-500' : 'text-green-600'}`}>{saveMessage}</span>
                 <button onClick={handleSave} disabled={isSaving} className={`flex items-center text-white px-5 py-2.5 rounded-2xl font-bold transition-all shadow-md ${isSaving ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700 active:scale-95'}`}>
                   {isSaving ? <i className="fas fa-spinner fa-spin mr-2"></i> : <i className="fas fa-check mr-2"></i>}
                   {isSaving ? '保存中...' : '保存'}
