@@ -52,7 +52,7 @@
     // ==========================================
     // ★ 新しいGASのURLに書き換えてください ★
     // ==========================================
-    const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx94R3YWE7w_IfmSTqz9_FNlEUNPWNkq4auvvn0BMM7b2z4wwjBtJpT_D_0XgATh9zb/exec"; 
+    const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwyz284BmLd1E5LSBjRFeYs4tjeo3Kfe85Fl4XsOhVjV72TsTsdjUBmseM82cRaj0fc/exec"; 
 
     // ==========================================
     // ★ 追加：Google Driveの画像を安定して表示するためのURL変換処理 ★
@@ -184,6 +184,7 @@
     };
 
     function App() {
+      const mainRef = useRef(null);
       const [activeTab, setActiveTab] = useState('home');
       const [searchTabKey, setSearchTabKey] = useState(0); 
 
@@ -297,7 +298,7 @@
             </div>
           )}
 
-          <main className="flex-1 overflow-y-auto overflow-x-hidden pb-20">
+          <main ref={mainRef} className="flex-1 overflow-y-auto overflow-x-hidden pb-20">
             {activeTab === 'home' && (
               <HomeTab 
                 viewingDateStr={viewingDateStr} 
@@ -341,7 +342,13 @@
           </main>
 
           <nav className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 flex justify-around items-center h-16 pb-safe z-40">
-            <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'home' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
+            <button onClick={() => {
+              if (activeTab === 'home') {
+                mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+              } else {
+                setActiveTab('home');
+              }
+            }} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'home' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
               <i className="fas fa-pen-to-square text-xl"></i>
               <span className="text-[10px] font-medium">入力</span>
             </button>
@@ -744,19 +751,15 @@
       const inputTweetUrls = extractTweetUrls(what);
 
       return (
-        <div 
-          className="p-4 max-w-lg mx-auto"
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
-        >
+        <>
           {!isGasLinked && (
-            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-[10px] sm:text-xs p-2 rounded-lg leading-tight mb-2">
+            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-[10px] sm:text-xs p-2 rounded-lg leading-tight m-4 mb-0 max-w-lg mx-auto">
               オフラインモードです。コード内の <code>GAS_WEB_APP_URL</code> を設定すると連携します。
             </div>
           )}
 
-          <div className="sticky top-0 z-30 -mx-4 px-4 pb-3 bg-white/95 backdrop-blur-md border-b border-gray-100 mb-4 pt-2">
-            <div className="flex items-center justify-between bg-gray-50 rounded-2xl p-1.5 shadow-sm border border-gray-200">
+          <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-gray-100 px-4 py-2 flex justify-center w-full">
+            <div className="w-full max-w-lg flex items-center justify-between bg-gray-50 rounded-2xl p-1.5 shadow-sm border border-gray-200">
               <button onClick={handlePrevDay} className="p-2 w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded-xl transition-colors active:scale-95">
                 <i className="fas fa-chevron-left"></i>
               </button>
@@ -774,13 +777,17 @@
             </div>
           </div>
 
-          <div key={viewingDateStr} className={`${slideEffect} flex flex-col gap-4 pb-4`}>
-            {/* 入力フォーム */}
-            <div className="space-y-3 bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-gray-100 relative">
-              
-              {/* 場所・人 */}
-              <div className="grid grid-cols-2 gap-2">
-                <div className="relative">
+          <div 
+            className="p-4 max-w-lg mx-auto w-full"
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+          >
+            <div key={viewingDateStr} className={`${slideEffect} flex flex-col gap-4 pb-4`}>
+              {/* 入力フォーム */}
+              <div className="space-y-3 bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-gray-100 relative">
+                
+                {/* 場所・人 */}
+                <div className="grid grid-cols-2 gap-2">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-map-marker-alt text-gray-400 text-xs"></i></div>
                   <input type="text" value={where} onChange={(e) => setWhere(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="場所 (例: 自宅, 渋谷)" disabled={isSaving} />
                 </div>
@@ -896,7 +903,7 @@
               )}
             </div>
           </div>
-        </div>
+        </>
       );
     }
 
@@ -1060,8 +1067,7 @@
 
       return (
         <div className="p-4 max-w-lg mx-auto animate-fade-in">
-          <div className="sticky top-0 bg-white/95 backdrop-blur-sm z-10 pt-4 pb-4 border-b border-gray-100">
-            <h1 className="text-2xl font-bold text-gray-800 mb-4">検索</h1>
+          <div className="sticky top-0 bg-white/95 backdrop-blur-sm z-10 pt-2 pb-4 border-b border-gray-100">
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-search text-gray-400"></i></div>
               <input type="text" className="block w-full pl-10 pr-10 py-3 border border-gray-200 rounded-2xl bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="内容、人、場所で検索..." value={query} onChange={(e) => { setQuery(e.target.value); setFilterTag(null); }} />
@@ -1179,8 +1185,6 @@
       return (
         <div className="p-4 max-w-lg mx-auto animate-fade-in bg-gray-50 min-h-screen">
           <div className="pt-2 pb-4 sticky top-0 bg-gray-50/95 backdrop-blur-sm z-10">
-            <h1 className="text-2xl font-bold text-gray-800 mb-3">振り返り</h1>
-            
             <div className="flex bg-gray-200 p-1 rounded-xl">
               <button 
                 onClick={() => setViewMode('monthly')} 
@@ -1265,14 +1269,6 @@
             </div>
           ) : (
             <>
-              <div className="bg-gradient-to-br from-indigo-400 to-indigo-600 rounded-3xl p-6 text-white shadow-md text-center">
-                <h3 className="text-indigo-100 text-xs font-bold mb-2 uppercase tracking-wider"><i className="fas fa-book-open mr-1"></i>書いた日数</h3>
-                <div className="flex items-baseline justify-center mt-1">
-                  <span className="text-5xl font-bold">{stats.totalDays}</span>
-                  <span className="ml-1 text-lg font-medium opacity-80">日</span>
-                </div>
-              </div>
-
               {stats.topPeople.length > 0 && (
                 <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
                   <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-users text-orange-500 mr-2"></i>よく遊んだ人</h3>
@@ -1321,8 +1317,6 @@
     }
 
     function AllTimeInsights({ entries, onOpenProfile, peopleProfiles }) {
-      const totalEntries = entries.filter(e => e.what || e.where || e.withWhom || (e.images && e.images.length > 0)).length;
-
       const { topPlaces, allPeople } = useMemo(() => {
         const placeMap = {};
         const peopleMap = {};
@@ -1343,29 +1337,6 @@
 
       return (
         <div className="space-y-6 animate-fade-in">
-          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-3xl p-6 text-white shadow-md">
-            <h3 className="text-blue-100 font-medium mb-1"><i className="fas fa-book-open mr-2"></i>全期間の記録日数</h3>
-            <div className="flex items-baseline">
-              <span className="text-5xl font-bold">{totalEntries}</span>
-              <span className="ml-2 text-lg opacity-80">日</span>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 text-center">
-            <h3 className="text-gray-500 text-[10px] font-bold mb-3 uppercase tracking-wider"><i className="fas fa-crown text-yellow-500 mr-1"></i> ベストパートナー</h3>
-            {allPeople.length > 0 ? (
-              <div className="flex flex-col items-center justify-center">
-                {peopleProfiles[allPeople[0][0]]?.xUsername ? (
-                  <img src={`https://unavatar.io/twitter/${peopleProfiles[allPeople[0][0]].xUsername}`} className="w-14 h-14 rounded-full mb-2 object-cover shadow-sm border border-gray-100" />
-                ) : (
-                  <i className="fas fa-user-circle text-5xl text-gray-200 mb-2"></i>
-                )}
-                <span className="text-2xl font-bold text-gray-800">{allPeople[0][0]}</span>
-                <span className="text-sm text-orange-500 font-bold mt-1">累計 {allPeople[0][1]}回</span>
-              </div>
-            ) : <span className="text-gray-400 text-sm">記録なし</span>}
-          </div>
-
           <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
             <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-map-marker-alt text-green-500 mr-2"></i> よく行く場所 TOP 3</h3>
             {topPlaces.length > 0 ? (
