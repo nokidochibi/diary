@@ -263,8 +263,8 @@
                 onOpenProfile={setSelectedProfile}
               />
             )}
-            {activeTab === 'search' && <SearchTab entries={entries} onOpenProfile={setSelectedProfile} />}
-            {activeTab === 'insights' && <InsightsTab entries={entries} onOpenProfile={setSelectedProfile} />}
+            {activeTab === 'search' && <SearchTab entries={entries} onOpenProfile={setSelectedProfile} onSelectDate={(date) => { setViewingDateStr(date); setActiveTab('home'); }} />}
+            {activeTab === 'insights' && <InsightsTab entries={entries} onOpenProfile={setSelectedProfile} onSelectDate={(date) => { setViewingDateStr(date); setActiveTab('home'); }} />}
           </main>
 
           <nav className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 flex justify-around items-center h-16 pb-safe z-40">
@@ -293,6 +293,7 @@
               entries={entries} 
               onClose={() => setSelectedProfile(null)} 
               onOpenProfile={setSelectedProfile} 
+              onSelectDate={(date) => { setViewingDateStr(date); setActiveTab('home'); }}
             />
           )}
         </div>
@@ -302,7 +303,7 @@
     // ==========================================
     // 個別プロフィール画面 (ProfileModal)
     // ==========================================
-    function ProfileModal({ profile, entries, onClose, onOpenProfile }) {
+    function ProfileModal({ profile, entries, onClose, onOpenProfile, onSelectDate }) {
       if (!profile) return null;
       const { type, name } = profile;
       const isPerson = type === 'person';
@@ -413,7 +414,10 @@
                       {relatedEntries.map((entry, idx) => (
                         <div key={idx} className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100">
                           <div className="flex justify-between items-center mb-2">
-                            <span className="text-sm font-bold text-blue-600">{entry.when.replace(/-/g, '/')}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-bold text-blue-600">{entry.when.replace(/-/g, '/')}</span>
+                              <button onClick={() => { onSelectDate(entry.when); onClose(); }} className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors active:scale-95"><i className="fas fa-pen mr-1"></i>編集</button>
+                            </div>
                             <div className="flex gap-1 text-base">
                               {entry.weather && <span>{entry.weather}</span>}
                               {entry.mood && <span>{entry.mood}</span>}
@@ -943,8 +947,9 @@
     // ==========================================
     // 検索タブ
     // ==========================================
-    function SearchTab({ entries, onOpenProfile }) {
+    function SearchTab({ entries, onOpenProfile, onSelectDate }) {
       const [query, setQuery] = useState('');
+      const [filterTag, setFilterTag] = useState(null); // { type: 'person' | 'place', value: string }
 
       const popularPeople = useMemo(() => {
         const map = {};
@@ -959,6 +964,16 @@
       }, [entries]);
 
       const filteredEntries = useMemo(() => {
+        // 完全一致タグ検索（ボタンで選んだ場合）
+        if (filterTag) {
+          return entries.filter(e => {
+            if (filterTag.type === 'person') return splitTags(e.withWhom).includes(filterTag.value);
+            if (filterTag.type === 'place') return splitTags(e.where).includes(filterTag.value);
+            return false;
+          }).sort((a, b) => new Date(b.when) - new Date(a.when));
+        }
+
+        // 部分一致テキスト検索
         if (!query.trim()) return [];
         const lower = query.toLowerCase();
         return entries.filter(e => 
@@ -966,7 +981,7 @@
           (e.where || '').toLowerCase().includes(lower) || 
           (e.withWhom || '').toLowerCase().includes(lower)
         ).sort((a, b) => new Date(b.when) - new Date(a.when));
-      }, [query, entries]);
+      }, [query, filterTag, entries]);
 
       return (
         <div className="p-4 max-w-lg mx-auto animate-fade-in">
@@ -974,13 +989,24 @@
             <h1 className="text-2xl font-bold text-gray-800 mb-4">検索</h1>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-search text-gray-400"></i></div>
-              <input type="text" className="block w-full pl-10 pr-10 py-3 border border-gray-200 rounded-2xl bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="内容、人、場所で検索..." value={query} onChange={(e) => setQuery(e.target.value)} />
+              <input type="text" className="block w-full pl-10 pr-10 py-3 border border-gray-200 rounded-2xl bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="内容、人、場所で検索..." value={query} onChange={(e) => { setQuery(e.target.value); setFilterTag(null); }} />
               {query && <button onClick={() => setQuery('')} className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"><i className="fas fa-times"></i></button>}
             </div>
+
+            {filterTag && (
+              <div className="mt-3 flex items-center gap-2 animate-fade-in">
+                <span className="text-xs font-bold text-gray-500">絞り込み中:</span>
+                <div className={`px-3 py-1.5 text-sm font-bold rounded-xl flex items-center shadow-sm ${filterTag.type === 'person' ? 'bg-orange-50 text-orange-700 border border-orange-100' : 'bg-green-50 text-green-700 border border-green-100'}`}>
+                  <i className={`fas ${filterTag.type === 'person' ? 'fa-user' : 'fa-map-marker-alt'} text-xs mr-2 opacity-50`}></i>
+                  {filterTag.value}
+                  <button onClick={() => setFilterTag(null)} className="ml-2 w-5 h-5 flex items-center justify-center rounded-full bg-black/5 hover:bg-black/10 transition-colors"><i className="fas fa-times text-[10px]"></i></button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="mt-4">
-            {!query.trim() && (popularPeople.length > 0 || popularPlaces.length > 0) && (
+            {!query.trim() && !filterTag && (popularPeople.length > 0 || popularPlaces.length > 0) && (
               <div className="mb-8 space-y-6">
                 
                 {/* 場所の絞り込みリスト */}
@@ -989,7 +1015,7 @@
                     <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center"><i className="fas fa-map-marker-alt mr-1"></i> 場所で絞り込む</h3>
                     <div className="flex flex-wrap gap-2">
                       {popularPlaces.map((place, idx) => (
-                        <button key={idx} onClick={() => setQuery(place)} className="px-3 py-1.5 bg-green-50 text-green-700 text-sm font-bold rounded-xl border border-green-100 active:scale-95 shadow-sm">
+                        <button key={idx} onClick={() => { setFilterTag({ type: 'place', value: place }); setQuery(''); }} className="px-3 py-1.5 bg-green-50 text-green-700 text-sm font-bold rounded-xl border border-green-100 active:scale-95 shadow-sm">
                           <i className="fas fa-map-marker-alt text-xs mr-1 opacity-50"></i> {place}
                         </button>
                       ))}
@@ -1002,7 +1028,7 @@
                     <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center"><i className="fas fa-users mr-1"></i> 人で絞り込む</h3>
                     <div className="flex flex-wrap gap-2">
                       {popularPeople.map((person, idx) => (
-                        <button key={idx} onClick={() => setQuery(person)} className="px-3 py-1.5 bg-orange-50 text-orange-700 text-sm font-bold rounded-xl border border-orange-100 active:scale-95 shadow-sm">
+                        <button key={idx} onClick={() => { setFilterTag({ type: 'person', value: person }); setQuery(''); }} className="px-3 py-1.5 bg-orange-50 text-orange-700 text-sm font-bold rounded-xl border border-orange-100 active:scale-95 shadow-sm">
                           <i className="fas fa-user text-xs mr-1 opacity-50"></i> {person}
                         </button>
                       ))}
@@ -1012,7 +1038,7 @@
               </div>
             )}
 
-            {!query.trim() ? (
+            {!query.trim() && !filterTag ? (
               popularPeople.length === 0 && popularPlaces.length === 0 && <div className="text-center py-12 text-gray-400"><i className="fas fa-search text-4xl mb-4 opacity-20"></i><p className="text-sm">思い出を検索してみましょう</p></div>
             ) : filteredEntries.length === 0 ? (
               <div className="text-center py-12 text-gray-500">一致する日記は見つかりませんでした。</div>
@@ -1025,7 +1051,10 @@
                   return (
                     <div key={idx} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
                       <div className="text-sm font-bold text-blue-600 mb-3 flex justify-between border-b border-gray-50 pb-2">
-                        {entry.when && entry.when.replace(/-/g, '/')}
+                        <div className="flex items-center gap-2">
+                          <span>{entry.when && entry.when.replace(/-/g, '/')}</span>
+                          <button onClick={() => onSelectDate(entry.when)} className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors active:scale-95"><i className="fas fa-pen mr-1"></i>編集</button>
+                        </div>
                         <span className="text-lg leading-none">{entry.mood} {entry.weather}</span>
                       </div>
 
@@ -1061,7 +1090,7 @@
     // ==========================================
     // インサイト（振り返り）タブ
     // ==========================================
-    function InsightsTab({ entries, onOpenProfile }) {
+    function InsightsTab({ entries, onOpenProfile, onSelectDate }) {
       const [viewMode, setViewMode] = useState('monthly'); // 'monthly' | 'all'
 
       return (
