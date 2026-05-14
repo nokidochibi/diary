@@ -85,8 +85,20 @@
       return Array.from(new Set(text.match(regex) || []));
     };
 
+    // X(Twitter)のアカウント名（@ID）を抽出する
+    const extractXUsername = (input) => {
+      if (!input) return null;
+      let str = input.trim();
+      // URLからの抽出
+      const urlMatch = str.match(/(?:twitter\.com|x\.com)\/([a-zA-Z0-9_]+)/);
+      if (urlMatch && urlMatch[1]) return urlMatch[1];
+      // @形式からの抽出
+      if (str.startsWith('@')) return str.substring(1);
+      return str;
+    };
+
     // 共通タグコンポーネント (クリックでプロフィールを開く)
-    function TagList({ places, people, onOpenProfile }) {
+    function TagList({ places, people, onOpenProfile, peopleProfiles = {} }) {
       if (!places?.length && !people?.length) return null;
       return (
         <div className="flex flex-wrap gap-2">
@@ -95,11 +107,18 @@
               <i className="fas fa-map-marker-alt mr-1 opacity-70"></i> {place}
             </button>
           ))}
-          {people && people.map((person, i) => (
-            <button key={`w-${i}`} onClick={(e) => { e.stopPropagation(); onOpenProfile && onOpenProfile({ type: 'person', name: person }); }} className="inline-flex items-center px-2 py-1 bg-orange-50 text-orange-700 text-[10px] font-bold rounded-md border border-orange-100 hover:bg-orange-100 active:scale-95 transition-transform shadow-sm">
-              <i className="fas fa-users mr-1 opacity-70"></i> {person}
-            </button>
-          ))}
+          {people && people.map((person, i) => {
+            const xUsername = peopleProfiles[person]?.xUsername;
+            return (
+              <button key={`w-${i}`} onClick={(e) => { e.stopPropagation(); onOpenProfile && onOpenProfile({ type: 'person', name: person }); }} className="inline-flex items-center px-2 py-1 bg-orange-50 text-orange-700 text-[10px] font-bold rounded-md border border-orange-100 hover:bg-orange-100 active:scale-95 transition-transform shadow-sm">
+                {xUsername ? (
+                  <img src={`https://unavatar.io/twitter/${xUsername}`} className="w-3.5 h-3.5 rounded-full mr-1 object-cover border border-orange-200" onError={(e) => {e.target.style.display='none'; e.target.nextSibling.style.display='inline-block';}}/>
+                ) : null}
+                <i className="fas fa-users mr-1 opacity-70" style={{ display: xUsername ? 'none' : 'inline-block' }}></i> 
+                {person}
+              </button>
+            );
+          })}
         </div>
       );
     }
@@ -171,6 +190,7 @@
       const [entries, setEntries] = useState([]);
       const [isLoading, setIsLoading] = useState(false);
       const [selectedProfile, setSelectedProfile] = useState(null); 
+      const [peopleProfiles, setPeopleProfiles] = useState({}); // ★人ごとのプロフィール情報（Xアカウント等）
 
       const today = new Date();
       const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -184,8 +204,17 @@
             try {
               const response = await fetch(GAS_WEB_APP_URL);
               const data = await response.json();
-              const sortedData = data.sort((a, b) => new Date(b.when) - new Date(a.when));
-              setEntries(sortedData);
+              
+              // ★GASのレスポンス形式に合わせて分岐（古い配列形式にも対応）
+              if (Array.isArray(data)) {
+                const sortedData = data.sort((a, b) => new Date(b.when) - new Date(a.when));
+                setEntries(sortedData);
+              } else {
+                // 新しい形式：日記データ(entries)とプロフィールデータ(profiles)
+                const sortedData = data.entries.sort((a, b) => new Date(b.when) - new Date(a.when));
+                setEntries(sortedData);
+                if (data.profiles) setPeopleProfiles(data.profiles);
+              }
             } catch (error) {
               console.error("データの取得に失敗しました:", error);
             } finally {
@@ -200,7 +229,37 @@
         };
 
         fetchEntries();
+
+        // ★GAS連携していない場合のみ、ローカルからプロフィール情報を読み込む
+        if (!GAS_WEB_APP_URL) {
+          const savedProfiles = localStorage.getItem('multiYearDiaryPeopleProfiles');
+          if (savedProfiles) {
+            setPeopleProfiles(JSON.parse(savedProfiles));
+          }
+        }
       }, []);
+
+      // ★プロフィールの更新関数（GASへ保存リクエストを送信）
+      const updatePersonProfile = async (name, data) => {
+        setPeopleProfiles(prev => {
+          const newProfiles = { ...prev, [name]: { ...(prev[name] || {}), ...data } };
+          if (!GAS_WEB_APP_URL) {
+            localStorage.setItem('multiYearDiaryPeopleProfiles', JSON.stringify(newProfiles));
+          }
+          return newProfiles;
+        });
+
+        if (GAS_WEB_APP_URL) {
+          try {
+            await fetch(GAS_WEB_APP_URL, {
+              method: 'POST',
+              body: JSON.stringify({ type: 'profile', name: name, xUsername: data.xUsername }),
+            });
+          } catch (error) {
+            console.error("プロフィールの保存に失敗しました:", error);
+          }
+        }
+      };
 
       const saveEntry = async (entry) => {
         setEntries(prevEntries => {
@@ -250,6 +309,7 @@
                 onSave={saveEntry} 
                 isGasLinked={!!GAS_WEB_APP_URL} 
                 onOpenProfile={setSelectedProfile}
+                peopleProfiles={peopleProfiles}
               />
             )}
             {activeTab === 'calendar' && (
@@ -261,9 +321,10 @@
                   setActiveTab('home');
                 }}
                 onOpenProfile={setSelectedProfile}
+                peopleProfiles={peopleProfiles}
               />
             )}
-            {activeTab === 'search' && <SearchTab entries={entries} onOpenProfile={setSelectedProfile} onSelectDate={(date) => { setViewingDateStr(date); setActiveTab('home'); }} />}
+            {activeTab === 'search' && <SearchTab entries={entries} onOpenProfile={setSelectedProfile} onSelectDate={(date) => { setViewingDateStr(date); setActiveTab('home'); }} peopleProfiles={peopleProfiles} />}
             {activeTab === 'insights' && <InsightsTab entries={entries} onOpenProfile={setSelectedProfile} onSelectDate={(date) => { setViewingDateStr(date); setActiveTab('home'); }} />}
           </main>
 
@@ -294,6 +355,8 @@
               onClose={() => setSelectedProfile(null)} 
               onOpenProfile={setSelectedProfile} 
               onSelectDate={(date) => { setViewingDateStr(date); setActiveTab('home'); }}
+              peopleProfiles={peopleProfiles}
+              updatePersonProfile={updatePersonProfile}
             />
           )}
         </div>
@@ -303,10 +366,26 @@
     // ==========================================
     // 個別プロフィール画面 (ProfileModal)
     // ==========================================
-    function ProfileModal({ profile, entries, onClose, onOpenProfile, onSelectDate }) {
+    function ProfileModal({ profile, entries, onClose, onOpenProfile, onSelectDate, peopleProfiles, updatePersonProfile }) {
       if (!profile) return null;
       const { type, name } = profile;
       const isPerson = type === 'person';
+      
+      const personProfile = isPerson ? (peopleProfiles[name] || {}) : null;
+      const xUsername = personProfile?.xUsername;
+      
+      const [editX, setEditX] = useState(false);
+      const [xInput, setXInput] = useState(xUsername || '');
+
+      const handleSaveX = () => {
+        const username = extractXUsername(xInput);
+        if (username) {
+          updatePersonProfile(name, { xUsername: username });
+        } else {
+          updatePersonProfile(name, { xUsername: null });
+        }
+        setEditX(false);
+      };
       
       const colorClass = isPerson ? 'from-orange-400 to-orange-500' : 'from-green-400 to-green-500';
       const textClass = isPerson ? 'text-orange-600' : 'text-green-600';
@@ -351,13 +430,38 @@
               <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 bg-black/20 hover:bg-black/30 rounded-full flex items-center justify-center transition-colors">
                 <i className="fas fa-times"></i>
               </button>
-              <div className="flex items-center gap-4 mt-2">
-                <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-3xl backdrop-blur-sm border border-white/30 shadow-inner">
-                  <i className={`fas ${icon}`}></i>
+              <div className="flex items-start gap-4 mt-2">
+                <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-3xl backdrop-blur-sm border border-white/30 shadow-inner overflow-hidden flex-shrink-0">
+                  {isPerson && xUsername ? (
+                    <img src={`https://unavatar.io/twitter/${xUsername}`} className="w-full h-full object-cover" />
+                  ) : (
+                    <i className={`fas ${icon}`}></i>
+                  )}
                 </div>
-                <div>
+                <div className="flex-1">
                   <p className="text-xs opacity-90 font-medium mb-0.5 tracking-wider uppercase">{isPerson ? 'Profile' : 'Location'}</p>
-                  <h2 className="text-2xl font-bold">{name}</h2>
+                  <h2 className="text-2xl font-bold leading-tight">{name}</h2>
+                  
+                  {isPerson && (
+                    <div className="mt-2">
+                      {editX ? (
+                        <div className="flex gap-1 items-center bg-white/10 p-1 rounded-lg backdrop-blur-md">
+                          <input type="text" value={xInput} onChange={e=>setXInput(e.target.value)} placeholder="XのURL or @ID" className="text-gray-800 text-xs p-1.5 rounded-md flex-1 outline-none border-none"/>
+                          <button onClick={handleSaveX} className="bg-white text-orange-500 px-3 py-1.5 rounded-md text-xs font-bold active:scale-95">保存</button>
+                        </div>
+                      ) : (
+                        xUsername ? (
+                          <div className="inline-flex items-center gap-1.5 text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded-lg cursor-pointer backdrop-blur-sm transition-colors border border-white/20" onClick={()=>setEditX(true)}>
+                            <i className="fab fa-twitter"></i> @{xUsername} <i className="fas fa-pen ml-1 text-[10px] opacity-70"></i>
+                          </div>
+                        ) : (
+                          <button onClick={()=>setEditX(true)} className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full backdrop-blur-sm transition-colors border border-white/20">
+                            <i className="fab fa-twitter mr-1"></i> Xアカウントを紐付け
+                          </button>
+                        )
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -428,6 +532,7 @@
                             places={splitTags(entry.where).filter(p => !(!isPerson && p === name))} 
                             people={splitTags(entry.withWhom).filter(p => !(isPerson && p === name))} 
                             onOpenProfile={onOpenProfile} 
+                            peopleProfiles={peopleProfiles}
                           />
                         </div>
                       ))}
@@ -446,7 +551,7 @@
     // ==========================================
     // 入力タブ
     // ==========================================
-    function HomeTab({ viewingDateStr, setViewingDateStr, todayStr, entries, onSave, isGasLinked, onOpenProfile }) {
+    function HomeTab({ viewingDateStr, setViewingDateStr, todayStr, entries, onSave, isGasLinked, onOpenProfile, peopleProfiles }) {
       const [what, setWhat] = useState('');
       const [where, setWhere] = useState('');
       const [withWhom, setWithWhom] = useState('');
@@ -805,7 +910,7 @@
                           </div>
                         )}
 
-                        <TagList places={splitTags(entry.where)} people={splitTags(entry.withWhom)} onOpenProfile={onOpenProfile} />
+                        <TagList places={splitTags(entry.where)} people={splitTags(entry.withWhom)} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
                       </div>
                     );
                   })}
@@ -820,7 +925,7 @@
     // ==========================================
     // カレンダータブ
     // ==========================================
-    function CalendarTab({ entries, todayStr, onSelectDate, onOpenProfile }) {
+    function CalendarTab({ entries, todayStr, onSelectDate, onOpenProfile, peopleProfiles }) {
       const [currentYear, setCurrentYear] = useState(new Date(todayStr).getFullYear());
       const [selectedDate, setSelectedDate] = useState(null);
       const months = Array.from({ length: 12 }, (_, i) => i);
@@ -891,7 +996,7 @@
                       )}
 
                       <div className="mb-4">
-                        <TagList places={splitTags(selectedEntry.where)} people={splitTags(selectedEntry.withWhom)} onOpenProfile={onOpenProfile} />
+                        <TagList places={splitTags(selectedEntry.where)} people={splitTags(selectedEntry.withWhom)} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
                       </div>
                     </>
                   ) : <div className="text-center py-6 text-gray-400 text-sm">この日の日記はありません。</div>}
@@ -947,7 +1052,7 @@
     // ==========================================
     // 検索タブ
     // ==========================================
-    function SearchTab({ entries, onOpenProfile, onSelectDate }) {
+    function SearchTab({ entries, onOpenProfile, onSelectDate, peopleProfiles }) {
       const [query, setQuery] = useState('');
       const [filterTag, setFilterTag] = useState(null); // { type: 'person' | 'place', value: string }
 
@@ -1076,7 +1181,7 @@
                         </div>
                       )}
 
-                      <TagList places={splitTags(entry.where)} people={splitTags(entry.withWhom)} onOpenProfile={onOpenProfile} />
+                      <TagList places={splitTags(entry.where)} people={splitTags(entry.withWhom)} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
                     </div>
                   );
                 })}
