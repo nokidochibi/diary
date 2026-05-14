@@ -50,9 +50,24 @@
     const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
     // ==========================================
-    // ★ 新しいGASのURL
+    // ★ 新しいGASのURLに書き換えてください ★
     // ==========================================
     const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx94R3YWE7w_IfmSTqz9_FNlEUNPWNkq4auvvn0BMM7b2z4wwjBtJpT_D_0XgATh9zb/exec"; 
+
+    // ==========================================
+    // ★ 追加：Google Driveの画像を安定して表示するためのURL変換処理 ★
+    // ==========================================
+    const formatImageUrl = (url) => {
+      if (!url) return '';
+      // uc?export=view形式 のURLを thumbnail形式 に変換してブロックを回避
+      if (url.includes('drive.google.com/uc')) {
+        const match = url.match(/id=([a-zA-Z0-9_-]+)/);
+        if (match && match[1]) {
+          return `https://drive.google.com/thumbnail?id=${match[1]}&sz=w800`;
+        }
+      }
+      return url;
+    };
 
     const splitTags = (str) => {
       if (!str) return [];
@@ -192,7 +207,6 @@
               const response = await fetch(`${GAS_WEB_APP_URL}?t=${new Date().getTime()}`);
               const data = await response.json();
               
-              // ★空の日付を除外してソート時のエラーを防止
               if (Array.isArray(data)) {
                 const sortedData = data.filter(e => e.when).sort((a, b) => new Date(b.when) - new Date(a.when));
                 setEntries(sortedData);
@@ -240,9 +254,7 @@
         }
       };
 
-      // ★保存処理のエラーハンドリングを強化し、結果を返す
       const saveEntry = useCallback(async (entry) => {
-        // UIの即時反映 (Optimistic Update)
         setEntries(prevEntries => {
           let newEntries = [...prevEntries];
           const existingIndex = newEntries.findIndex(e => e.when === entry.when);
@@ -488,7 +500,7 @@
                       <h3 className="text-xs font-bold text-gray-500 mb-3 ml-1 uppercase tracking-wider"><i className="fas fa-camera mr-2"></i>Photos</h3>
                       <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
                         {stats.images.map((img, i) => (
-                          <img key={i} src={img} className="w-24 h-24 object-cover rounded-2xl border border-gray-200 flex-shrink-0 shadow-sm" />
+                          <img key={i} src={formatImageUrl(img)} className="w-24 h-24 object-cover rounded-2xl border border-gray-200 flex-shrink-0 shadow-sm" />
                         ))}
                       </div>
                     </div>
@@ -604,7 +616,6 @@
 
         if (isChanged && hasContent) {
           const timerId = setTimeout(async () => {
-            // 自動保存のエラー結果もキャッチする
             const res = await onSave({ when: viewingDateStr, what, where, withWhom, images });
             if (res && res.error) {
               setSaveMessage('自動保存エラー: ' + res.error);
@@ -801,7 +812,8 @@
               <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-200" onTouchStart={(e) => e.stopPropagation()}>
                 {images.map((img, idx) => (
                   <div key={idx} className="relative w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
-                    <img src={img} className="w-full h-full object-cover" />
+                    {/* ★ 変換されたURLをセットする */}
+                    <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
                     <button onClick={() => handleRemoveImage(idx)} className="absolute top-1 right-1 bg-red-500/90 backdrop-blur-sm text-white rounded-full w-6 h-6 flex items-center justify-center shadow-lg active:scale-90 transition-transform"><i className="fas fa-times text-xs"></i></button>
                   </div>
                 ))}
@@ -861,7 +873,8 @@
                           <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-100 mb-4">
                             {entry.images.map((img, i) => (
                               <div key={`past-img-${i}`} className="w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
-                                <img src={img} className="w-full h-full object-cover" />
+                                {/* ★ 変換されたURLをセットする */}
+                                <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
                               </div>
                             ))}
                           </div>
@@ -940,7 +953,8 @@
                         <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-100 mb-4">
                           {selectedEntry.images.map((img, i) => (
                             <div key={`modal-img-${i}`} className="w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
-                              <img src={img} className="w-full h-full object-cover" />
+                              {/* ★ 変換されたURLをセットする */}
+                              <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
                             </div>
                           ))}
                         </div>
@@ -1130,7 +1144,8 @@
                         <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-100 mb-4">
                           {entry.images.map((img, i) => (
                             <div key={`search-img-${i}`} className="w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
-                              <img src={img} className="w-full h-full object-cover" />
+                              {/* ★ 変換されたURLをセットする */}
+                              <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
                             </div>
                           ))}
                         </div>
@@ -1293,7 +1308,8 @@
                   <h3 className="text-gray-500 text-xs font-bold mb-3 ml-1 uppercase tracking-wider"><i className="fas fa-image mr-2"></i>今月の写真</h3>
                   <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
                     {stats.images.map((img, i) => (
-                      <img key={i} src={img} className="w-28 h-28 object-cover rounded-2xl border border-gray-200 flex-shrink-0 shadow-sm" />
+                      /* ★ 変換されたURLをセットする */
+                      <img key={i} src={formatImageUrl(img)} className="w-28 h-28 object-cover rounded-2xl border border-gray-200 flex-shrink-0 shadow-sm" />
                     ))}
                   </div>
                 </div>
