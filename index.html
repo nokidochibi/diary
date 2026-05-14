@@ -729,23 +729,23 @@
             </div>
           )}
 
-          <div className="sticky top-2 z-20 flex items-center justify-between bg-white/80 backdrop-blur-md rounded-2xl p-2 border border-gray-200 shadow-sm mb-4">
-            <button onClick={handlePrevDay} className="p-2 w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded-xl transition-colors">
-              <i className="fas fa-chevron-left"></i>
-            </button>
-            <div className="text-center flex flex-col items-center">
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-bold text-gray-800">{year}年{parseInt(month)}月{parseInt(day)}日</h1>
+          <div className="sticky top-0 z-30 -mx-4 px-4 pb-3 bg-white/95 backdrop-blur-md border-b border-gray-100 mb-4 pt-2">
+            <div className="flex items-center justify-between bg-gray-50 rounded-2xl p-1.5 shadow-sm border border-gray-200">
+              <button onClick={handlePrevDay} className="p-2 w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded-xl transition-colors active:scale-95">
+                <i className="fas fa-chevron-left"></i>
+              </button>
+              <div className="text-center flex flex-col items-center flex-1">
+                <h1 className="text-xl font-bold text-gray-800 tracking-tight">{year}年{parseInt(month)}月{parseInt(day)}日</h1>
+                {!isToday ? (
+                  <button onClick={handleToday} className="text-[10px] text-blue-600 font-bold flex items-center mt-0.5 bg-blue-50 px-2.5 py-0.5 rounded-full active:scale-95">
+                    <i className="fas fa-calendar-day mr-1"></i> 今日へ戻る
+                  </button>
+                ) : <span className="text-[10px] text-red-500 font-bold mt-0.5 bg-red-50 px-2.5 py-0.5 rounded-full">今日</span>}
               </div>
-              {!isToday ? (
-                <button onClick={handleToday} className="text-xs text-blue-600 font-medium flex items-center mt-0.5 bg-blue-50 px-2 py-0.5 rounded-full">
-                  <i className="fas fa-calendar-day mr-1"></i> 今日へ戻る
-                </button>
-              ) : <span className="text-xs text-gray-400 font-medium mt-0.5">今日</span>}
+              <button onClick={handleNextDay} className="p-2 w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded-xl transition-colors active:scale-95">
+                <i className="fas fa-chevron-right"></i>
+              </button>
             </div>
-            <button onClick={handleNextDay} className="p-2 w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded-xl transition-colors">
-              <i className="fas fa-chevron-right"></i>
-            </button>
           </div>
 
           <div key={viewingDateStr} className={`${slideEffect} flex flex-col gap-4 pb-4`}>
