@@ -202,15 +202,14 @@
           if (GAS_WEB_APP_URL) {
             setIsLoading(true);
             try {
-              const response = await fetch(GAS_WEB_APP_URL);
+              // ★URLの末尾に現在時刻を足すことで、ブラウザのキャッシュ（古いデータの使い回し）を強制的に防ぐ
+              const response = await fetch(`${GAS_WEB_APP_URL}?t=${new Date().getTime()}`);
               const data = await response.json();
               
-              // ★GASのレスポンス形式に合わせて分岐（古い配列形式にも対応）
               if (Array.isArray(data)) {
                 const sortedData = data.sort((a, b) => new Date(b.when) - new Date(a.when));
                 setEntries(sortedData);
               } else {
-                // 新しい形式：日記データ(entries)とプロフィールデータ(profiles)
                 const sortedData = data.entries.sort((a, b) => new Date(b.when) - new Date(a.when));
                 setEntries(sortedData);
                 if (data.profiles) setPeopleProfiles(data.profiles);
