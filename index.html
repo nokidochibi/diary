@@ -54,12 +54,42 @@
     // ==========================================
     const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx94R3YWE7w_IfmSTqz9_FNlEUNPWNkq4auvvn0BMM7b2z4wwjBtJpT_D_0XgATh9zb/exec"; 
 
-    // ==========================================
-    // ★ Google Driveの画像を安定して表示するためのURL変換処理 ★
-    // ==========================================
+    // スワイプ用のカスタムフック
+    const useSwipe = (onSwipeLeft, onSwipeRight) => {
+      const touchStartX = useRef(null);
+      const touchStartY = useRef(null);
+      const touchTime = useRef(null);
+
+      const onTouchStart = (e) => {
+        touchStartX.current = e.targetTouches[0].clientX;
+        touchStartY.current = e.targetTouches[0].clientY;
+        touchTime.current = Date.now();
+      };
+
+      const onTouchEnd = (e) => {
+        if (!touchStartX.current || !touchStartY.current) return;
+        const touchEndX = e.changedTouches[0].clientX;
+        const touchEndY = e.changedTouches[0].clientY;
+        const distanceX = touchStartX.current - touchEndX;
+        const distanceY = touchStartY.current - touchEndY;
+        const timeElapsed = Date.now() - touchTime.current;
+        
+        touchStartX.current = null;
+        touchStartY.current = null;
+
+        if (timeElapsed > 300) return;
+        if (Math.abs(distanceY) > Math.abs(distanceX)) return;
+
+        if (distanceX > 50 && onSwipeLeft) onSwipeLeft();
+        else if (distanceX < -50 && onSwipeRight) onSwipeRight();
+      };
+      
+      return { onTouchStart, onTouchEnd };
+    };
+
+    // Google Driveの画像を安定して表示するためのURL変換処理
     const formatImageUrl = (url) => {
       if (!url) return '';
-      // uc?export=view形式 のURLを thumbnail形式 に変換してブロックを回避
       if (url.includes('drive.google.com/uc')) {
         const match = url.match(/id=([a-zA-Z0-9_-]+)/);
         if (match && match[1]) {
@@ -192,7 +222,8 @@
       const [selectedProfile, setSelectedProfile] = useState(null); 
       const [peopleProfiles, setPeopleProfiles] = useState({});
       
-      const mainRef = useRef(null); // スクロール制御用Ref
+      const mainRef = useRef(null); 
+      const lastInsightsTap = useRef(0);
 
       const todayStr = useMemo(() => {
         const today = new Date();
@@ -235,6 +266,13 @@
           if (savedProfiles) setPeopleProfiles(JSON.parse(savedProfiles));
         }
       }, []);
+
+      // タブ移動時に最上部へスクロール（カレンダー以外）
+      useEffect(() => {
+        if (activeTab !== 'calendar' && mainRef.current) {
+          mainRef.current.scrollTo(0, 0);
+        }
+      }, [activeTab]);
 
       const updatePersonProfile = async (name, data) => {
         setPeopleProfiles(prev => {
@@ -290,13 +328,32 @@
         return { success: true };
       }, []);
 
-      const handleHomeTabClick = () => {
+      const handleInputTabClick = () => {
         if (activeTab === 'home') {
-          // すでにHomeにいる場合は最上部へスクロール
-          mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+          window.dispatchEvent(new CustomEvent('jumpToTodayHome'));
         } else {
           setActiveTab('home');
         }
+      };
+
+      const handleCalendarTabClick = () => {
+        if (activeTab === 'calendar') {
+          window.dispatchEvent(new CustomEvent('scrollToTodayCalendar'));
+        } else {
+          setActiveTab('calendar');
+        }
+      };
+
+      const handleInsightsTabClick = () => {
+        const now = Date.now();
+        if (activeTab === 'insights') {
+          if (now - lastInsightsTap.current < 300) {
+            window.dispatchEvent(new CustomEvent('randomMonthInsights'));
+          }
+        } else {
+          setActiveTab('insights');
+        }
+        lastInsightsTap.current = now;
       };
 
       return (
@@ -352,11 +409,11 @@
           </main>
 
           <nav className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 flex justify-around items-center h-16 pb-safe z-40">
-            <button onClick={handleHomeTabClick} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'home' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
+            <button onClick={handleInputTabClick} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'home' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
               <i className="fas fa-pen-to-square text-xl"></i>
               <span className="text-[10px] font-medium">入力</span>
             </button>
-            <button onClick={() => setActiveTab('calendar')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'calendar' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
+            <button onClick={handleCalendarTabClick} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'calendar' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
               <i className="fas fa-calendar text-xl"></i>
               <span className="text-[10px] font-medium">カレンダー</span>
             </button>
@@ -367,7 +424,7 @@
               <i className="fas fa-search text-xl"></i>
               <span className="text-[10px] font-medium">検索</span>
             </button>
-            <button onClick={() => setActiveTab('insights')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'insights' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
+            <button onClick={handleInsightsTabClick} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'insights' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
               <i className="fas fa-chart-pie text-xl"></i>
               <span className="text-[10px] font-medium">振り返り</span>
             </button>
@@ -585,6 +642,16 @@
       const [slideEffect, setSlideEffect] = useState('animate-fade-in');
       const [lastLoadedDate, setLastLoadedDate] = useState(null);
 
+      // タブ内ジャンプ用
+      useEffect(() => {
+        const handler = () => {
+          setSlideEffect('animate-fade-in');
+          setViewingDateStr(todayStr);
+        };
+        window.addEventListener('jumpToTodayHome', handler);
+        return () => window.removeEventListener('jumpToTodayHome', handler);
+      }, [todayStr]);
+
       useEffect(() => {
         const entry = entries.find(e => e.when === viewingDateStr);
         if (viewingDateStr !== lastLoadedDate || (entry && lastLoadedDate === null)) {
@@ -690,18 +757,6 @@
         else if (distanceX < -minSwipeDistance) handlePrevDay();
       };
 
-      const popularPlaces = useMemo(() => {
-        const map = {};
-        entries.forEach(e => splitTags(e.where).forEach(p => map[p] = (map[p] || 0) + 1));
-        return Object.entries(map).sort((a, b) => b[1] - a[1]).map(e => e[0]).slice(0, 3);
-      }, [entries]);
-
-      const popularPeople = useMemo(() => {
-        const map = {};
-        entries.forEach(e => splitTags(e.withWhom).forEach(p => map[p] = (map[p] || 0) + 1));
-        return Object.entries(map).sort((a, b) => b[1] - a[1]).map(e => e[0]).slice(0, 3); 
-      }, [entries]);
-
       const pastEntries = useMemo(() => {
         const viewDate = new Date(viewingDateStr);
         const month = viewDate.getMonth();
@@ -743,173 +798,153 @@
         setImages(images.filter((_, i) => i !== index));
       };
 
-      const handleAddTag = (setter, currentVal, tag) => {
-        const tags = splitTags(currentVal);
-        if (!tags.includes(tag)) {
-          setter(tags.length > 0 ? `${currentVal}, ${tag}` : tag);
-        }
-      };
-
       const [year, month, day] = viewingDateStr.split('-');
       const isToday = viewingDateStr === todayStr;
       const inputTweetUrls = extractTweetUrls(what);
 
       return (
         <div 
-          className="max-w-lg mx-auto"
+          className="mx-auto"
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          {!isGasLinked && (
-            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-[10px] sm:text-xs p-2 rounded-lg leading-tight mx-4 mt-4 mb-2">
-              オフラインモードです。コード内の <code>GAS_WEB_APP_URL</code> を設定すると連携します。
-            </div>
-          )}
-
-          {/* Sticky Header */}
-          <div className="sticky top-0 z-40 px-4 pb-3 bg-white/95 backdrop-blur-md border-b border-gray-100 mb-4 pt-4">
-            <div className="flex items-center justify-between bg-gray-50 rounded-2xl p-1.5 shadow-sm border border-gray-200">
-              <button onClick={handlePrevDay} className="p-2 w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded-xl transition-colors active:scale-95">
-                <i className="fas fa-chevron-left"></i>
-              </button>
-              <div className="text-center flex flex-col items-center flex-1">
-                <h1 className="text-xl font-bold text-gray-800 tracking-tight">{year}年{parseInt(month)}月{parseInt(day)}日</h1>
-                {!isToday ? (
-                  <button onClick={handleToday} className="text-[10px] text-blue-600 font-bold flex items-center mt-0.5 bg-blue-50 px-2.5 py-0.5 rounded-full active:scale-95">
-                    <i className="fas fa-calendar-day mr-1"></i> 今日へ戻る
-                  </button>
-                ) : <span className="text-[10px] text-red-500 font-bold mt-0.5 bg-red-50 px-2.5 py-0.5 rounded-full">今日</span>}
-              </div>
-              <button onClick={handleNextDay} className="p-2 w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded-xl transition-colors active:scale-95">
-                <i className="fas fa-chevron-right"></i>
-              </button>
-            </div>
-          </div>
-
-          <div key={viewingDateStr} className={`${slideEffect} px-4 flex flex-col gap-4 pb-4`}>
-            {/* 入力フォーム */}
-            <div className="space-y-3 bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-gray-100 relative">
-              
-              {/* 場所・人 */}
-              <div className="grid grid-cols-2 gap-2">
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-map-marker-alt text-gray-400 text-xs"></i></div>
-                  <input type="text" value={where} onChange={(e) => setWhere(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="場所 (例: 自宅, 渋谷)" disabled={isSaving} />
+          {/* Fixed Header */}
+          <div className="fixed top-0 left-0 w-full z-40 bg-white/95 backdrop-blur-md border-b border-gray-100">
+            <div className="max-w-lg mx-auto px-4 py-3 pt-4">
+              <div className="flex items-center justify-between bg-gray-50 rounded-2xl p-1.5 shadow-sm border border-gray-200">
+                <button onClick={handlePrevDay} className="p-2 w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded-xl transition-colors active:scale-95">
+                  <i className="fas fa-chevron-left"></i>
+                </button>
+                <div className="text-center flex flex-col items-center flex-1">
+                  <h1 className="text-xl font-bold text-gray-800 tracking-tight">{year}年{parseInt(month)}月{parseInt(day)}日</h1>
+                  {!isToday ? (
+                    <button onClick={handleToday} className="text-[10px] text-blue-600 font-bold flex items-center mt-0.5 bg-blue-50 px-2.5 py-0.5 rounded-full active:scale-95">
+                      <i className="fas fa-calendar-day mr-1"></i> 今日へ戻る
+                    </button>
+                  ) : <span className="text-[10px] text-red-500 font-bold mt-0.5 bg-red-50 px-2.5 py-0.5 rounded-full">今日</span>}
                 </div>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-users text-gray-400 text-xs"></i></div>
-                  <input type="text" value={withWhom} onChange={(e) => setWithWhom(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="誰と (例: 家族)" disabled={isSaving} />
-                </div>
-              </div>
-
-              {/* サジェスト */}
-              {(popularPlaces.length > 0 || popularPeople.length > 0) && (
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {popularPlaces.map((p, i) => (
-                    <button key={`sp-${i}`} onClick={() => handleAddTag(setWhere, where, p)} className="text-[10px] bg-green-50 text-green-700 px-2 py-1 rounded-md border border-green-100 hover:bg-green-100 whitespace-nowrap active:scale-95 transition-transform">+{p}</button>
-                  ))}
-                  {popularPeople.map((p, i) => {
-                    const xUser = peopleProfiles[p]?.xUsername;
-                    return (
-                      <button key={`sw-${i}`} onClick={() => handleAddTag(setWithWhom, withWhom, p)} className="flex items-center text-[10px] bg-orange-50 text-orange-700 px-2 py-1 rounded-md border border-orange-100 hover:bg-orange-100 whitespace-nowrap active:scale-95 transition-transform">
-                        {xUser ? <img src={`https://unavatar.io/twitter/${xUser}`} className="w-3 h-3 rounded-full mr-1 object-cover border border-orange-200" loading="lazy" onError={(e)=>{e.target.style.display='none'}} /> : null}
-                        +{p}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* 写真 4枚 */}
-              <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-200" onTouchStart={(e) => e.stopPropagation()}>
-                {images.map((img, idx) => (
-                  <div key={idx} className="relative w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
-                    {/* ★ 変換されたURLをセットする */}
-                    <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
-                    <button onClick={() => handleRemoveImage(idx)} className="absolute top-1 right-1 bg-red-500/90 backdrop-blur-sm text-white rounded-full w-6 h-6 flex items-center justify-center shadow-lg active:scale-90 transition-transform"><i className="fas fa-times text-xs"></i></button>
-                  </div>
-                ))}
-                {images.length < 4 && (
-                  <label className={`w-full h-full flex flex-col items-center justify-center bg-white border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:bg-gray-50 transition-colors ${isSaving ? 'opacity-50 pointer-events-none' : ''}`}>
-                    <i className="fas fa-camera text-gray-400 text-xl mb-1"></i>
-                    <span className="text-[10px] text-gray-400 font-medium mt-1">写真を追加</span>
-                    <input type="file" accept="image/*" multiple onChange={handleImageChange} className="hidden" disabled={isSaving} />
-                  </label>
-                )}
-              </div>
-
-              {/* できごと */}
-              <div className="relative">
-                <textarea value={what} onChange={(e) => setWhat(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none text-base bg-gray-50 placeholder-gray-400" rows="4" placeholder="できごと (XのURLを貼ると自動でツイートが表示されます)" disabled={isSaving}/>
-                {inputTweetUrls.length > 0 && <span className="absolute top-2 right-2 text-[10px] text-blue-500 bg-white/80 px-1 rounded"><i className="fab fa-twitter"></i> Xリンク検知</span>}
-                
-                {inputTweetUrls.length > 0 && (
-                  <div className="flex flex-col gap-2 mt-2">
-                    {inputTweetUrls.map((url, i) => <TweetEmbed key={`input-${url}-${i}`} url={url} />)}
-                  </div>
-                )}
-              </div>
-
-              {/* 保存ボタン */}
-              <div className="pt-2 flex items-center justify-between border-t border-gray-50">
-                <span className={`text-xs font-bold w-1/2 leading-tight ${saveMessage.includes('エラー') ? 'text-red-500' : 'text-green-600'}`}>{saveMessage}</span>
-                <button onClick={handleSave} disabled={isSaving} className={`flex items-center text-white px-5 py-2.5 rounded-2xl font-bold transition-all shadow-md ${isSaving ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700 active:scale-95'}`}>
-                  {isSaving ? <i className="fas fa-spinner fa-spin mr-2"></i> : <i className="fas fa-check mr-2"></i>}
-                  {isSaving ? '保存中...' : '保存'}
+                <button onClick={handleNextDay} className="p-2 w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded-xl transition-colors active:scale-95">
+                  <i className="fas fa-chevron-right"></i>
                 </button>
               </div>
             </div>
+          </div>
+          
+          {/* Header Spacer */}
+          <div className="h-[84px]"></div>
 
-            <div className="mt-4">
-              <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
-                <i className="fas fa-clock mr-2 text-gray-500"></i> 同日の日記
-              </h2>
-              
-              {pastEntries.length === 0 ? (
-                <div className="text-center py-8 bg-gray-50 rounded-2xl border border-gray-100 border-dashed">
-                  <p className="text-gray-500 text-sm">過去の同日の日記はまだありません。</p>
+          <div className="max-w-lg mx-auto">
+            {!isGasLinked && (
+              <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-[10px] sm:text-xs p-2 rounded-lg leading-tight mx-4 mb-3">
+                オフラインモードです。コード内の <code>GAS_WEB_APP_URL</code> を設定すると連携します。
+              </div>
+            )}
+
+            <div key={viewingDateStr} className={`${slideEffect} px-4 flex flex-col gap-4 pb-4`}>
+              {/* 入力フォーム */}
+              <div className="space-y-3 bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-gray-100 relative">
+                
+                {/* 場所・人 */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-map-marker-alt text-gray-400 text-xs"></i></div>
+                    <input type="text" value={where} onChange={(e) => setWhere(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="場所 (例: 自宅, 渋谷)" disabled={isSaving} />
+                  </div>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-users text-gray-400 text-xs"></i></div>
+                    <input type="text" value={withWhom} onChange={(e) => setWithWhom(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="誰と (例: 家族)" disabled={isSaving} />
+                  </div>
                 </div>
-              ) : (
-                <div className="space-y-6">
-                  {pastEntries.map((entry, idx) => {
-                    const entryYear = entry.when.split('-')[0];
-                    const currentYear = new Date(viewingDateStr).getFullYear();
-                    const diffYear = currentYear - parseInt(entryYear);
-                    const tweetUrls = extractTweetUrls(entry.what);
 
-                    return (
-                      <div key={idx} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
-                        <div className="flex justify-between items-center mb-3 pb-2 border-b border-gray-50">
-                          <div className="text-lg font-bold text-blue-600">
-                            {entryYear}年 <span className="text-sm text-gray-500 font-normal ml-1">({diffYear}年前)</span>
+                {/* 写真 4枚 */}
+                <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-200" onTouchStart={(e) => e.stopPropagation()}>
+                  {images.map((img, idx) => (
+                    <div key={idx} className="relative w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
+                      <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
+                      <button onClick={() => handleRemoveImage(idx)} className="absolute top-1 right-1 bg-red-500/90 backdrop-blur-sm text-white rounded-full w-6 h-6 flex items-center justify-center shadow-lg active:scale-90 transition-transform"><i className="fas fa-times text-xs"></i></button>
+                    </div>
+                  ))}
+                  {images.length < 4 && (
+                    <label className={`w-full h-full flex flex-col items-center justify-center bg-white border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:bg-gray-50 transition-colors ${isSaving ? 'opacity-50 pointer-events-none' : ''}`}>
+                      <i className="fas fa-camera text-gray-400 text-xl mb-1"></i>
+                      <span className="text-[10px] text-gray-400 font-medium mt-1">写真を追加</span>
+                      <input type="file" accept="image/*" multiple onChange={handleImageChange} className="hidden" disabled={isSaving} />
+                    </label>
+                  )}
+                </div>
+
+                {/* できごと */}
+                <div className="relative">
+                  <textarea value={what} onChange={(e) => setWhat(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none text-base bg-gray-50 placeholder-gray-400" rows="4" placeholder="できごと (XのURLを貼ると自動でツイートが表示されます)" disabled={isSaving}/>
+                  {inputTweetUrls.length > 0 && <span className="absolute top-2 right-2 text-[10px] text-blue-500 bg-white/80 px-1 rounded"><i className="fab fa-twitter"></i> Xリンク検知</span>}
+                  
+                  {inputTweetUrls.length > 0 && (
+                    <div className="flex flex-col gap-2 mt-2">
+                      {inputTweetUrls.map((url, i) => <TweetEmbed key={`input-${url}-${i}`} url={url} />)}
+                    </div>
+                  )}
+                </div>
+
+                {/* 保存ボタン */}
+                <div className="pt-2 flex items-center justify-between border-t border-gray-50">
+                  <span className={`text-xs font-bold w-1/2 leading-tight ${saveMessage.includes('エラー') ? 'text-red-500' : 'text-green-600'}`}>{saveMessage}</span>
+                  <button onClick={handleSave} disabled={isSaving} className={`flex items-center text-white px-5 py-2.5 rounded-2xl font-bold transition-all shadow-md ${isSaving ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700 active:scale-95'}`}>
+                    {isSaving ? <i className="fas fa-spinner fa-spin mr-2"></i> : <i className="fas fa-check mr-2"></i>}
+                    {isSaving ? '保存中...' : '保存'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                  <i className="fas fa-clock mr-2 text-gray-500"></i> 同日の日記
+                </h2>
+                
+                {pastEntries.length === 0 ? (
+                  <div className="text-center py-8 bg-gray-50 rounded-2xl border border-gray-100 border-dashed">
+                    <p className="text-gray-500 text-sm">過去の同日の日記はまだありません。</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {pastEntries.map((entry, idx) => {
+                      const entryYear = entry.when.split('-')[0];
+                      const currentYear = new Date(viewingDateStr).getFullYear();
+                      const diffYear = currentYear - parseInt(entryYear);
+                      const tweetUrls = extractTweetUrls(entry.what);
+
+                      return (
+                        <div key={idx} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
+                          <div className="flex justify-between items-center mb-3 pb-2 border-b border-gray-50">
+                            <div className="text-lg font-bold text-blue-600">
+                              {entryYear}年 <span className="text-sm text-gray-500 font-normal ml-1">({diffYear}年前)</span>
+                            </div>
                           </div>
+                          
+                          {entry.images && entry.images.length > 0 && (
+                            <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-100 mb-4">
+                              {entry.images.map((img, i) => (
+                                <div key={`past-img-${i}`} className="w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
+                                  <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <p className="text-gray-800 whitespace-pre-wrap text-[15px] leading-relaxed mb-4">{entry.what}</p>
+                          
+                          {tweetUrls.length > 0 && (
+                            <div className="flex flex-col gap-2 mb-4">
+                              {tweetUrls.map((url, i) => <TweetEmbed key={`past-${url}-${i}`} url={url} />)}
+                            </div>
+                          )}
+
+                          <TagList places={splitTags(entry.where)} people={splitTags(entry.withWhom)} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
                         </div>
-                        
-                        {entry.images && entry.images.length > 0 && (
-                          <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-100 mb-4">
-                            {entry.images.map((img, i) => (
-                              <div key={`past-img-${i}`} className="w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
-                                {/* ★ 変換されたURLをセットする */}
-                                <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        <p className="text-gray-800 whitespace-pre-wrap text-[15px] leading-relaxed mb-4">{entry.what}</p>
-                        
-                        {tweetUrls.length > 0 && (
-                          <div className="flex flex-col gap-2 mb-4">
-                            {tweetUrls.map((url, i) => <TweetEmbed key={`past-${url}-${i}`} url={url} />)}
-                          </div>
-                        )}
-
-                        <TagList places={splitTags(entry.where)} people={splitTags(entry.withWhom)} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -921,7 +956,6 @@
     // ==========================================
     function CalendarTab({ entries, todayStr, onSelectDate, onOpenProfile, peopleProfiles }) {
       const currentYear = new Date(todayStr).getFullYear();
-      // 初期状態として過去10年、未来2年分を表示
       const [years, setYears] = useState(() => Array.from({ length: 13 }, (_, i) => currentYear - 10 + i));
       const [selectedDate, setSelectedDate] = useState(null);
       const months = Array.from({ length: 12 }, (_, i) => i);
@@ -943,14 +977,22 @@
       const bottomObserverRef = useRef(null);
       const currentYearRef = useRef(null);
 
-      // 初回レンダリング後に現在の年へスクロール
       useEffect(() => {
         if (currentYearRef.current) {
           currentYearRef.current.scrollIntoView({ behavior: 'auto', block: 'start' });
         }
       }, []);
 
-      // 無限スクロールの検知
+      useEffect(() => {
+        const handler = () => {
+          if (currentYearRef.current) {
+            currentYearRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        };
+        window.addEventListener('scrollToTodayCalendar', handler);
+        return () => window.removeEventListener('scrollToTodayCalendar', handler);
+      }, []);
+
       useEffect(() => {
         const observer = new IntersectionObserver((entries) => {
           entries.forEach(entry => {
@@ -1009,7 +1051,6 @@
                         <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-100 mb-4">
                           {selectedEntry.images.map((img, i) => (
                             <div key={`modal-img-${i}`} className="w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
-                              {/* ★ 変換されたURLをセットする */}
                               <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
                             </div>
                           ))}
@@ -1139,7 +1180,6 @@
             {!query.trim() && !filterTag && (popularPeople.length > 0 || popularPlaces.length > 0) && (
               <div className="mb-8 space-y-6">
                 
-                {/* 順序変更: 人を上に */}
                 {popularPeople.length > 0 && (
                   <div>
                     <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center"><i className="fas fa-users mr-1"></i> 人で絞り込む</h3>
@@ -1199,7 +1239,6 @@
                         <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-white p-1 rounded-2xl border border-gray-100 mb-4">
                           {entry.images.map((img, i) => (
                             <div key={`search-img-${i}`} className="w-full h-full bg-gray-50 rounded-xl overflow-hidden shadow-sm">
-                              {/* ★ 変換されたURLをセットする */}
                               <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
                             </div>
                           ))}
@@ -1231,9 +1270,28 @@
     function InsightsTab({ entries, onOpenProfile, peopleProfiles }) {
       const [viewMode, setViewMode] = useState('monthly'); // 'monthly' | 'all'
 
+      // ヘッダー部等でのスワイプでモードを切り替え
+      const { onTouchStart, onTouchEnd } = useSwipe(
+        () => setViewMode('all'),
+        () => setViewMode('monthly')
+      );
+
+      // ダブルタップでランダムな月を表示するためのイベントリスナー
+      useEffect(() => {
+        const handler = () => {
+          setViewMode('monthly');
+        };
+        window.addEventListener('randomMonthInsights', handler);
+        return () => window.removeEventListener('randomMonthInsights', handler);
+      }, []);
+
       return (
         <div className="p-4 max-w-lg mx-auto animate-fade-in bg-gray-50 min-h-screen">
-          <div className="pt-4 pb-4 sticky top-0 bg-gray-50/95 backdrop-blur-sm z-10">
+          <div 
+            className="pt-4 pb-4 sticky top-0 bg-gray-50/95 backdrop-blur-sm z-10"
+            onTouchStart={onTouchStart} 
+            onTouchEnd={onTouchEnd}
+          >
             <div className="flex bg-gray-200 p-1 rounded-xl">
               <button 
                 onClick={() => setViewMode('monthly')} 
@@ -1254,7 +1312,9 @@
             {viewMode === 'monthly' ? (
               <MonthlyInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
             ) : (
-              <AllTimeInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
+              <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+                <AllTimeInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
+              </div>
             )}
           </div>
         </div>
@@ -1281,6 +1341,27 @@
         setTargetDate(d);
       };
 
+      // ダブルタップ時のランダム月ジャンプ用
+      useEffect(() => {
+        const handler = () => {
+          const monthsWithEntries = [...new Set(entries.filter(e => e.when).map(e => e.when.substring(0, 7)))];
+          if (monthsWithEntries.length > 0) {
+            const randomMonthStr = monthsWithEntries[Math.floor(Math.random() * monthsWithEntries.length)];
+            const [y, m] = randomMonthStr.split('-');
+            setTargetDate(new Date(parseInt(y), parseInt(m) - 1, 1));
+          } else {
+            const d = new Date();
+            d.setMonth(d.getMonth() - Math.floor(Math.random() * 24));
+            setTargetDate(d);
+          }
+        };
+        window.addEventListener('randomMonthInsights', handler);
+        return () => window.removeEventListener('randomMonthInsights', handler);
+      }, [entries]);
+
+      // 月間ハイライト内の左右スワイプによる月移動
+      const { onTouchStart, onTouchEnd } = useSwipe(handleNextMonth, handlePrevMonth);
+
       const stats = useMemo(() => {
         const placeMap = {};
         const peopleMap = {};
@@ -1303,8 +1384,11 @@
       }, [monthlyEntries]);
 
       return (
-        <div className="space-y-6 animate-fade-in">
-          
+        <div 
+          className="space-y-6 animate-fade-in"
+          onTouchStart={(e) => { e.stopPropagation(); onTouchStart(e); }}
+          onTouchEnd={(e) => { e.stopPropagation(); onTouchEnd(e); }}
+        >
           <div className="flex items-center justify-between bg-white rounded-2xl p-2 shadow-sm border border-gray-100">
             <button onClick={handlePrevMonth} className="w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-xl"><i className="fas fa-chevron-left"></i></button>
             <span className="font-bold text-lg text-gray-800">{year}年 {month}月</span>
@@ -1320,7 +1404,7 @@
             <>
               {stats.topPeople.length > 0 && (
                 <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-                  <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-users text-orange-500 mr-2"></i>よく遊んだ人</h3>
+                  <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-users text-orange-500 mr-2"></i>遊んだ人</h3>
                   <div className="flex flex-wrap gap-2">
                      {stats.topPeople.map(([name, count]) => {
                        const xUser = peopleProfiles[name]?.xUsername;
@@ -1337,7 +1421,7 @@
 
               {stats.topPlaces.length > 0 && (
                 <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-                  <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-map-marker-alt text-green-500 mr-2"></i>よく行った場所</h3>
+                  <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-map-marker-alt text-green-500 mr-2"></i>行った場所</h3>
                   <div className="flex flex-wrap gap-2">
                      {stats.topPlaces.map(([name, count]) => (
                        <button key={name} onClick={() => onOpenProfile({type: 'place', name})} className="px-3 py-1.5 bg-green-50 text-green-700 text-xs font-bold rounded-xl border border-green-100 active:scale-95 shadow-sm flex items-center">
@@ -1353,7 +1437,6 @@
                   <h3 className="text-gray-500 text-xs font-bold mb-3 ml-1 uppercase tracking-wider"><i className="fas fa-image mr-2"></i>今月の写真</h3>
                   <div className="grid grid-cols-3 gap-2">
                     {stats.images.map((img, i) => (
-                      /* ★ 変換されたURLをセットする */
                       <div key={i} className="aspect-square w-full rounded-2xl overflow-hidden border border-gray-200 shadow-sm bg-gray-50">
                         <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
                       </div>
