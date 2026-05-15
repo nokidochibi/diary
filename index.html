@@ -862,7 +862,7 @@
 
             <div className="mt-4">
               <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
-                <i className="fas fa-clock mr-2 text-gray-500"></i> 過去の同日の日記
+                <i className="fas fa-clock mr-2 text-gray-500"></i> 同日の日記
               </h2>
               
               {pastEntries.length === 0 ? (
@@ -873,12 +873,16 @@
                 <div className="space-y-6">
                   {pastEntries.map((entry, idx) => {
                     const entryYear = entry.when.split('-')[0];
+                    const currentYear = new Date(viewingDateStr).getFullYear();
+                    const diffYear = currentYear - parseInt(entryYear);
                     const tweetUrls = extractTweetUrls(entry.what);
 
                     return (
                       <div key={idx} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
                         <div className="flex justify-between items-center mb-3 pb-2 border-b border-gray-50">
-                          <div className="text-lg font-bold text-blue-600">{entryYear}年</div>
+                          <div className="text-lg font-bold text-blue-600">
+                            {entryYear}年 <span className="text-sm text-gray-500 font-normal ml-1">({diffYear}年前)</span>
+                          </div>
                         </div>
                         
                         {entry.images && entry.images.length > 0 && (
@@ -916,7 +920,9 @@
     // カレンダータブ
     // ==========================================
     function CalendarTab({ entries, todayStr, onSelectDate, onOpenProfile, peopleProfiles }) {
-      const [currentYear, setCurrentYear] = useState(new Date(todayStr).getFullYear());
+      const currentYear = new Date(todayStr).getFullYear();
+      // 初期状態として過去10年、未来2年分を表示
+      const [years, setYears] = useState(() => Array.from({ length: 13 }, (_, i) => currentYear - 10 + i));
       const [selectedDate, setSelectedDate] = useState(null);
       const months = Array.from({ length: 12 }, (_, i) => i);
 
@@ -933,23 +939,61 @@
 
       const tweetUrls = selectedEntry ? extractTweetUrls(selectedEntry.what) : [];
 
-      return (
-        <div className="pb-10 bg-white animate-fade-in">
-          <div className="sticky top-0 bg-white/95 backdrop-blur-sm z-10 p-4 border-b border-gray-100 flex justify-between items-center">
-            <button onClick={() => setCurrentYear(prev => prev - 1)} className="p-2 w-10 h-10 flex items-center justify-center text-gray-400 hover:bg-gray-50 rounded-full">
-              <i className="fas fa-chevron-left"></i>
-            </button>
-            <h1 className="text-4xl font-bold text-red-500 tracking-tighter">{currentYear}年</h1>
-            <button onClick={() => setCurrentYear(prev => prev + 1)} className="p-2 w-10 h-10 flex items-center justify-center text-gray-400 hover:bg-gray-50 rounded-full">
-              <i className="fas fa-chevron-right"></i>
-            </button>
-          </div>
+      const topObserverRef = useRef(null);
+      const bottomObserverRef = useRef(null);
+      const currentYearRef = useRef(null);
 
-          <div className="grid grid-cols-3 gap-x-2 gap-y-6 p-4 max-w-3xl mx-auto">
-            {months.map(month => (
-              <MonthCalendar key={month} year={currentYear} month={month} todayStr={todayStr} entryDatesMap={entryDatesMap} onDayClick={setSelectedDate} />
-            ))}
-          </div>
+      // 初回レンダリング後に現在の年へスクロール
+      useEffect(() => {
+        if (currentYearRef.current) {
+          currentYearRef.current.scrollIntoView({ behavior: 'auto', block: 'start' });
+        }
+      }, []);
+
+      // 無限スクロールの検知
+      useEffect(() => {
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              if (entry.target === topObserverRef.current) {
+                setYears(prev => {
+                  const first = prev[0];
+                  return [first - 3, first - 2, first - 1, ...prev];
+                });
+              } else if (entry.target === bottomObserverRef.current) {
+                setYears(prev => {
+                  const last = prev[prev.length - 1];
+                  return [...prev, last + 1, last + 2, last + 3];
+                });
+              }
+            }
+          });
+        }, { rootMargin: '500px' });
+
+        if (topObserverRef.current) observer.observe(topObserverRef.current);
+        if (bottomObserverRef.current) observer.observe(bottomObserverRef.current);
+
+        return () => observer.disconnect();
+      }, []);
+
+      return (
+        <div className="pb-10 bg-white animate-fade-in relative">
+          <div ref={topObserverRef} className="h-1 w-full"></div>
+
+          {years.map(year => (
+            <div key={year} ref={year === currentYear ? currentYearRef : null} className="mb-6 pt-2">
+              <div className="sticky top-0 bg-white/95 backdrop-blur-sm z-10 p-3 border-b border-gray-100 mb-4 shadow-sm">
+                <h1 className="text-2xl font-bold text-red-500 tracking-tighter text-center">{year}年</h1>
+              </div>
+              <div className="grid grid-cols-3 gap-x-2 gap-y-6 p-4 max-w-3xl mx-auto">
+                {months.map(month => (
+                  <MonthCalendar key={`${year}-${month}`} year={year} month={month} todayStr={todayStr} entryDatesMap={entryDatesMap} onDayClick={setSelectedDate} />
+                ))}
+              </div>
+            </div>
+          ))}
+
+          <div ref={bottomObserverRef} className="h-1 w-full"></div>
 
           {selectedDate && (
             <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 animate-fade-in">
@@ -1043,13 +1087,13 @@
       const popularPeople = useMemo(() => {
         const map = {};
         entries.forEach(e => splitTags(e.withWhom).forEach(p => map[p] = (map[p] || 0) + 1));
-        return Object.entries(map).sort((a, b) => b[1] - a[1]).map(e => e[0]);
+        return Object.keys(map).sort((a, b) => a.localeCompare(b, 'ja'));
       }, [entries]);
 
       const popularPlaces = useMemo(() => {
         const map = {};
         entries.forEach(e => splitTags(e.where).forEach(p => map[p] = (map[p] || 0) + 1));
-        return Object.entries(map).sort((a, b) => b[1] - a[1]).map(e => e[0]);
+        return Object.keys(map).sort((a, b) => a.localeCompare(b, 'ja'));
       }, [entries]);
 
       const filteredEntries = useMemo(() => {
@@ -1307,10 +1351,12 @@
               {stats.images.length > 0 && (
                 <div>
                   <h3 className="text-gray-500 text-xs font-bold mb-3 ml-1 uppercase tracking-wider"><i className="fas fa-image mr-2"></i>今月の写真</h3>
-                  <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+                  <div className="grid grid-cols-3 gap-2">
                     {stats.images.map((img, i) => (
                       /* ★ 変換されたURLをセットする */
-                      <img key={i} src={formatImageUrl(img)} className="w-28 h-28 object-cover rounded-2xl border border-gray-200 flex-shrink-0 shadow-sm" />
+                      <div key={i} className="aspect-square w-full rounded-2xl overflow-hidden border border-gray-200 shadow-sm bg-gray-50">
+                        <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
+                      </div>
                     ))}
                   </div>
                 </div>
