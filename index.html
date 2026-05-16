@@ -485,14 +485,21 @@
       
       const [editX, setEditX] = useState(false);
       const [xInput, setXInput] = useState(xUsername || '');
+      const [isSavingX, setIsSavingX] = useState(false);
 
-      const handleSaveX = () => {
+      useEffect(() => {
+        setXInput(xUsername || '');
+      }, [xUsername]);
+
+      const handleSaveX = async () => {
+        setIsSavingX(true);
         const username = extractXUsername(xInput);
         if (username) {
-          updatePersonProfile(name, { xUsername: username });
+          await updatePersonProfile(name, { xUsername: username });
         } else {
-          updatePersonProfile(name, { xUsername: null });
+          await updatePersonProfile(name, { xUsername: null });
         }
+        setIsSavingX(false);
         setEditX(false);
       };
       
@@ -553,8 +560,8 @@
                     <div className="mt-2">
                       {editX ? (
                         <div className="flex gap-1 items-center bg-white/10 p-1 rounded-lg backdrop-blur-md">
-                          <input type="text" value={xInput} onChange={e=>setXInput(e.target.value)} placeholder="XのURL or @ID" className="text-gray-800 text-xs p-1.5 rounded-md flex-1 outline-none border-none"/>
-                          <button onClick={handleSaveX} className="bg-white text-orange-500 px-3 py-1.5 rounded-md text-xs font-bold active:scale-95">保存</button>
+                          <input type="text" value={xInput} onChange={e=>setXInput(e.target.value)} placeholder="XのURL or @ID" className="text-gray-800 text-xs p-1.5 rounded-md flex-1 outline-none border-none" disabled={isSavingX}/>
+                          <button onClick={handleSaveX} disabled={isSavingX} className={`bg-white text-orange-500 px-3 py-1.5 rounded-md text-xs font-bold active:scale-95 ${isSavingX ? 'opacity-50' : ''}`}>{isSavingX ? '保存中...' : '保存'}</button>
                         </div>
                       ) : (
                         xUsername ? (
