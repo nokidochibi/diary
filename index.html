@@ -215,7 +215,10 @@
 
     function App() {
       const [activeTab, setActiveTab] = useState('home');
-      const [searchTabKey, setSearchTabKey] = useState(0); 
+      
+      // 検索タブの状態をAppで保持するように変更
+      const [searchQuery, setSearchQuery] = useState('');
+      const [searchFilterTag, setSearchFilterTag] = useState(null);
 
       const [entries, setEntries] = useState([]);
       const [isLoading, setIsLoading] = useState(false);
@@ -330,7 +333,11 @@
 
       const handleInputTabClick = () => {
         if (activeTab === 'home') {
-          window.dispatchEvent(new CustomEvent('jumpToTodayHome'));
+          if (viewingDateStr === todayStr) {
+            mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+          } else {
+            window.dispatchEvent(new CustomEvent('jumpToTodayHome'));
+          }
         } else {
           setActiveTab('home');
         }
@@ -344,11 +351,21 @@
         }
       };
 
+      const handleSearchTabClick = () => {
+        if (activeTab === 'search') {
+          mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+        } else {
+          setActiveTab('search');
+        }
+      };
+
       const handleInsightsTabClick = () => {
         const now = Date.now();
         if (activeTab === 'insights') {
           if (now - lastInsightsTap.current < 300) {
             window.dispatchEvent(new CustomEvent('randomMonthInsights'));
+          } else {
+            mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
           }
         } else {
           setActiveTab('insights');
@@ -392,11 +409,14 @@
             )}
             {activeTab === 'search' && (
               <SearchTab 
-                key={searchTabKey}
                 entries={entries} 
                 onOpenProfile={setSelectedProfile} 
                 onSelectDate={(date) => { setViewingDateStr(date); setActiveTab('home'); }} 
                 peopleProfiles={peopleProfiles} 
+                query={searchQuery}
+                setQuery={setSearchQuery}
+                filterTag={searchFilterTag}
+                setFilterTag={setSearchFilterTag}
               />
             )}
             {activeTab === 'insights' && (
@@ -417,10 +437,7 @@
               <i className="fas fa-calendar text-xl"></i>
               <span className="text-[10px] font-medium">カレンダー</span>
             </button>
-            <button onClick={() => {
-              if (activeTab === 'search') setSearchTabKey(prev => prev + 1); 
-              setActiveTab('search');
-            }} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'search' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
+            <button onClick={handleSearchTabClick} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'search' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
               <i className="fas fa-search text-xl"></i>
               <span className="text-[10px] font-medium">検索</span>
             </button>
@@ -504,9 +521,9 @@
       }, [relatedEntries, type]);
 
       return (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center animate-fade-in" onClick={onClose}>
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center animate-fade-in" onClick={onClose}>
           <div 
-            className="bg-gray-50 w-full max-w-lg h-[88vh] rounded-t-[2rem] overflow-hidden flex flex-col shadow-2xl animate-slide-up"
+            className="bg-gray-50 w-full h-[100dvh] max-w-lg sm:h-[90vh] sm:rounded-2xl overflow-hidden flex flex-col shadow-2xl animate-slide-up"
             onClick={(e) => e.stopPropagation()}
           >
             <div className={`p-6 pb-5 bg-gradient-to-br ${colorClass} text-white relative`}>
@@ -845,18 +862,18 @@
               <div className="space-y-3 bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-gray-100 relative">
                 
                 {/* 場所・人 */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-map-marker-alt text-gray-400 text-xs"></i></div>
-                    <input type="text" value={where} onChange={(e) => setWhere(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="場所 (例: 自宅, 渋谷)" disabled={isSaving} />
-                  </div>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-users text-gray-400 text-xs"></i></div>
-                    <input type="text" value={withWhom} onChange={(e) => setWithWhom(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="誰と (例: 家族)" disabled={isSaving} />
-                  </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-map-marker-alt text-gray-400 text-xs"></i></div>
+                  <input type="text" value={where} onChange={(e) => setWhere(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="お店(例: 地名_店名)" disabled={isSaving} />
                 </div>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-users text-gray-400 text-xs"></i></div>
+                  <input type="text" value={withWhom} onChange={(e) => setWithWhom(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="誰と" disabled={isSaving} />
+                </div>
+              </div>
 
-                {/* 写真 4枚 */}
+              {/* 写真 4枚 */}
                 <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-200" onTouchStart={(e) => e.stopPropagation()}>
                   {images.map((img, idx) => (
                     <div key={idx} className="relative w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
@@ -1121,10 +1138,7 @@
     // ==========================================
     // 検索タブ
     // ==========================================
-    function SearchTab({ entries, onOpenProfile, onSelectDate, peopleProfiles }) {
-      const [query, setQuery] = useState('');
-      const [filterTag, setFilterTag] = useState(null); 
-
+    function SearchTab({ entries, onOpenProfile, onSelectDate, peopleProfiles, query, setQuery, filterTag, setFilterTag }) {
       const popularPeople = useMemo(() => {
         const map = {};
         entries.forEach(e => splitTags(e.withWhom).forEach(p => map[p] = (map[p] || 0) + 1));
@@ -1373,7 +1387,7 @@
           if (e.images) monthImages.push(...e.images);
         });
 
-        const sortMap = (map) => Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 3);
+        const sortMap = (map) => Object.entries(map).sort((a, b) => b[1] - a[1]);
 
         return {
           totalDays: monthlyEntries.length,
@@ -1421,7 +1435,7 @@
 
               {stats.topPlaces.length > 0 && (
                 <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-                  <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-map-marker-alt text-green-500 mr-2"></i>行った場所</h3>
+                  <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-map-marker-alt text-green-500 mr-2"></i>行ったお店</h3>
                   <div className="flex flex-wrap gap-2">
                      {stats.topPlaces.map(([name, count]) => (
                        <button key={name} onClick={() => onOpenProfile({type: 'place', name})} className="px-3 py-1.5 bg-green-50 text-green-700 text-xs font-bold rounded-xl border border-green-100 active:scale-95 shadow-sm flex items-center">
@@ -1472,7 +1486,7 @@
       return (
         <div className="space-y-6 animate-fade-in">
           <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-            <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-map-marker-alt text-green-500 mr-2"></i> よく行く場所 TOP 3</h3>
+            <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-map-marker-alt text-green-500 mr-2"></i> よく行くお店 TOP 3</h3>
             {topPlaces.length > 0 ? (
               <ul className="space-y-3">
                 {topPlaces.map((item, index) => (
