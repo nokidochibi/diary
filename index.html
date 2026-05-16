@@ -919,7 +919,7 @@
                   <div className="space-y-6">
                     {pastEntries.map((entry, idx) => {
                       const entryYear = entry.when.split('-')[0];
-                      const currentYear = new Date(viewingDateStr).getFullYear();
+                      const currentYear = new Date(todayStr).getFullYear();
                       const diffYear = currentYear - parseInt(entryYear);
                       const tweetUrls = extractTweetUrls(entry.what);
 
@@ -967,7 +967,7 @@
     // ==========================================
     function CalendarTab({ entries, todayStr, onSelectDate, onOpenProfile, peopleProfiles, resetKey }) {
       const currentYear = new Date(todayStr).getFullYear();
-      const [years, setYears] = useState(() => Array.from({ length: 13 }, (_, i) => currentYear - 10 + i));
+      const [years, setYears] = useState(() => Array.from({ length: 11 }, (_, i) => currentYear - 10 + i));
       const [selectedDate, setSelectedDate] = useState(null);
       const months = Array.from({ length: 12 }, (_, i) => i);
 
@@ -1014,7 +1014,12 @@
               } else if (entry.target === bottomObserverRef.current) {
                 setYears(prev => {
                   const last = prev[prev.length - 1];
-                  return [...prev, last + 1, last + 2, last + 3];
+                  if (last >= currentYear) return prev;
+                  const nextYears = [];
+                  for (let i = 1; i <= 3; i++) {
+                    if (last + i <= currentYear) nextYears.push(last + i);
+                  }
+                  return nextYears.length > 0 ? [...prev, ...nextYears] : prev;
                 });
               }
             }
@@ -1025,14 +1030,14 @@
         if (bottomObserverRef.current) observer.observe(bottomObserverRef.current);
 
         return () => observer.disconnect();
-      }, []);
+      }, [currentYear]);
 
       return (
         <div className="pb-10 bg-white animate-fade-in relative">
           <div ref={topObserverRef} className="h-1 w-full"></div>
 
           {years.map(year => (
-            // 年ごとに独立したrelativeコンテナを作成。この中でstickyが追従するため「押し出される」挙pto動になる。
+            // 年ごとに独立したrelativeコンテナを作成。この中でstickyが追従するため「押し出される」挙動になる。
             <div key={year} ref={year === currentYear ? currentYearRef : null} className="relative">
               <div className="sticky top-0 bg-white/95 backdrop-blur-md z-30 p-3 shadow-sm border-b border-gray-100">
                 <h1 className="text-2xl font-bold text-red-500 tracking-tighter text-center">{year}年</h1>
