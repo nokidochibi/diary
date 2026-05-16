@@ -216,7 +216,7 @@
     function App() {
       const [activeTab, setActiveTab] = useState('home');
       
-      // 検索タブの状態をAppで保持するように変更
+      // 検索タブの状態をAppで保持
       const [searchQuery, setSearchQuery] = useState('');
       const [searchFilterTag, setSearchFilterTag] = useState(null);
 
@@ -226,7 +226,8 @@
       const [peopleProfiles, setPeopleProfiles] = useState({});
       
       const mainRef = useRef(null); 
-      const lastInsightsTap = useRef(0);
+      const activeTabTapCount = useRef(1);
+      const scrollPositions = useRef({ home: 0, calendar: 0, search: 0, insights: 0 });
 
       const todayStr = useMemo(() => {
         const today = new Date();
@@ -270,10 +271,15 @@
         }
       }, []);
 
-      // タブ移動時に最上部へスクロール（カレンダー以外）
+      // メインコンテナのスクロール位置を保存
+      const handleScroll = (e) => {
+        scrollPositions.current[activeTab] = e.target.scrollTop;
+      };
+
+      // タブ移動時にスクロール位置を復元（リセットしない）
       useEffect(() => {
-        if (activeTab !== 'calendar' && mainRef.current) {
-          mainRef.current.scrollTo(0, 0);
+        if (mainRef.current) {
+          mainRef.current.scrollTo({ top: scrollPositions.current[activeTab] || 0, behavior: 'auto' });
         }
       }, [activeTab]);
 
@@ -331,46 +337,35 @@
         return { success: true };
       }, []);
 
-      const handleInputTabClick = () => {
-        if (activeTab === 'home') {
-          if (viewingDateStr === todayStr) {
+      // タブのタップ挙動制御
+      // 1タップ目: 移動(リセットなし), 2タップ目: リセット, 3タップ目: 最上部
+      const handleTabClick = (targetTab) => {
+        if (activeTab === targetTab) {
+          activeTabTapCount.current += 1;
+          
+          if (activeTabTapCount.current === 2) {
+            // 2タップ目：状態リセット
+            if (targetTab === 'home') {
+              window.dispatchEvent(new CustomEvent('jumpToTodayHome'));
+            } else if (targetTab === 'calendar') {
+              window.dispatchEvent(new CustomEvent('scrollToTodayCalendar'));
+            } else if (targetTab === 'search') {
+              setSearchQuery('');
+              setSearchFilterTag(null);
+            } else if (targetTab === 'insights') {
+              window.dispatchEvent(new CustomEvent('randomMonthInsights'));
+            }
+          } else if (activeTabTapCount.current >= 3) {
+            // 3タップ目：最上部へ移動
             mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-          } else {
-            window.dispatchEvent(new CustomEvent('jumpToTodayHome'));
+            scrollPositions.current[targetTab] = 0; // 位置保存もリセット
+            activeTabTapCount.current = 1; // 次は2タップ目(リセット)になるように1に戻す
           }
         } else {
-          setActiveTab('home');
+          // 1タップ目：タブ移動
+          setActiveTab(targetTab);
+          activeTabTapCount.current = 1;
         }
-      };
-
-      const handleCalendarTabClick = () => {
-        if (activeTab === 'calendar') {
-          window.dispatchEvent(new CustomEvent('scrollToTodayCalendar'));
-        } else {
-          setActiveTab('calendar');
-        }
-      };
-
-      const handleSearchTabClick = () => {
-        if (activeTab === 'search') {
-          mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-        } else {
-          setActiveTab('search');
-        }
-      };
-
-      const handleInsightsTabClick = () => {
-        const now = Date.now();
-        if (activeTab === 'insights') {
-          if (now - lastInsightsTap.current < 300) {
-            window.dispatchEvent(new CustomEvent('randomMonthInsights'));
-          } else {
-            mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-          }
-        } else {
-          setActiveTab('insights');
-        }
-        lastInsightsTap.current = now;
       };
 
       return (
@@ -382,7 +377,7 @@
             </div>
           )}
 
-          <main ref={mainRef} className="flex-1 overflow-y-auto overflow-x-hidden pb-20 scroll-smooth">
+          <main ref={mainRef} onScroll={handleScroll} className="flex-1 overflow-y-auto overflow-x-hidden pb-20 scroll-smooth">
             {activeTab === 'home' && (
               <HomeTab 
                 viewingDateStr={viewingDateStr} 
@@ -429,19 +424,19 @@
           </main>
 
           <nav className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 flex justify-around items-center h-16 pb-safe z-40">
-            <button onClick={handleInputTabClick} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'home' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
+            <button onClick={() => handleTabClick('home')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'home' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
               <i className="fas fa-pen-to-square text-xl"></i>
               <span className="text-[10px] font-medium">入力</span>
             </button>
-            <button onClick={handleCalendarTabClick} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'calendar' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
+            <button onClick={() => handleTabClick('calendar')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'calendar' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
               <i className="fas fa-calendar text-xl"></i>
               <span className="text-[10px] font-medium">カレンダー</span>
             </button>
-            <button onClick={handleSearchTabClick} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'search' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
+            <button onClick={() => handleTabClick('search')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'search' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
               <i className="fas fa-search text-xl"></i>
               <span className="text-[10px] font-medium">検索</span>
             </button>
-            <button onClick={handleInsightsTabClick} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'insights' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
+            <button onClick={() => handleTabClick('insights')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'insights' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
               <i className="fas fa-chart-pie text-xl"></i>
               <span className="text-[10px] font-medium">振り返り</span>
             </button>
@@ -595,7 +590,7 @@
                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                       <h3 className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wider">
                         <i className={`fas ${isPerson ? 'fa-map-marker-alt' : 'fa-users'} mr-2`}></i>
-                        よく一緒に{isPerson ? '行く場所' : 'いる人'}
+                        よく一緒に{isPerson ? '行くお店' : 'いる人'}
                       </h3>
                       <div className="flex flex-wrap gap-2">
                         {stats.topRelated.map(([relName, count], idx) => (
@@ -659,7 +654,7 @@
       const [slideEffect, setSlideEffect] = useState('animate-fade-in');
       const [lastLoadedDate, setLastLoadedDate] = useState(null);
 
-      // タブ内ジャンプ用
+      // タブ内ジャンプ用 (2タップ目リセット用)
       useEffect(() => {
         const handler = () => {
           setSlideEffect('animate-fade-in');
@@ -821,59 +816,54 @@
 
       return (
         <div 
-          className="mx-auto"
+          className="mx-auto h-full flex flex-col relative"
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          {/* Fixed Header */}
-          <div className="fixed top-0 left-0 w-full z-40 bg-white/95 backdrop-blur-md border-b border-gray-100">
-            <div className="max-w-lg mx-auto px-4 py-3 pt-4">
-              <div className="flex items-center justify-between bg-gray-50 rounded-2xl p-1.5 shadow-sm border border-gray-200">
-                <button onClick={handlePrevDay} className="p-2 w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded-xl transition-colors active:scale-95">
-                  <i className="fas fa-chevron-left"></i>
-                </button>
-                <div className="text-center flex flex-col items-center flex-1">
-                  <h1 className="text-xl font-bold text-gray-800 tracking-tight">{year}年{parseInt(month)}月{parseInt(day)}日</h1>
-                  {!isToday ? (
-                    <button onClick={handleToday} className="text-[10px] text-blue-600 font-bold flex items-center mt-0.5 bg-blue-50 px-2.5 py-0.5 rounded-full active:scale-95">
-                      <i className="fas fa-calendar-day mr-1"></i> 今日へ戻る
-                    </button>
-                  ) : <span className="text-[10px] text-red-500 font-bold mt-0.5 bg-red-50 px-2.5 py-0.5 rounded-full">今日</span>}
-                </div>
-                <button onClick={handleNextDay} className="p-2 w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded-xl transition-colors active:scale-95">
-                  <i className="fas fa-chevron-right"></i>
-                </button>
+          {/* Sticky Header - アニメーションの外側に配置し、stickyで固定 */}
+          <div className="sticky top-0 left-0 w-full z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 px-4 py-3">
+            <div className="max-w-lg mx-auto flex items-center justify-between bg-gray-50 rounded-2xl p-1.5 shadow-sm border border-gray-200">
+              <button onClick={handlePrevDay} className="p-2 w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded-xl transition-colors active:scale-95">
+                <i className="fas fa-chevron-left"></i>
+              </button>
+              <div className="text-center flex flex-col items-center flex-1">
+                <h1 className="text-xl font-bold text-gray-800 tracking-tight">{year}年{parseInt(month)}月{parseInt(day)}日</h1>
+                {!isToday ? (
+                  <button onClick={handleToday} className="text-[10px] text-blue-600 font-bold flex items-center mt-0.5 bg-blue-50 px-2.5 py-0.5 rounded-full active:scale-95">
+                    <i className="fas fa-calendar-day mr-1"></i> 今日へ戻る
+                  </button>
+                ) : <span className="text-[10px] text-red-500 font-bold mt-0.5 bg-red-50 px-2.5 py-0.5 rounded-full">今日</span>}
               </div>
+              <button onClick={handleNextDay} className="p-2 w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded-xl transition-colors active:scale-95">
+                <i className="fas fa-chevron-right"></i>
+              </button>
             </div>
           </div>
           
-          {/* Header Spacer */}
-          <div className="h-[84px]"></div>
-
-          <div className="max-w-lg mx-auto">
+          <div className="max-w-lg mx-auto w-full">
             {!isGasLinked && (
-              <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-[10px] sm:text-xs p-2 rounded-lg leading-tight mx-4 mb-3">
+              <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-[10px] sm:text-xs p-2 rounded-lg leading-tight mx-4 mt-3 mb-1">
                 オフラインモードです。コード内の <code>GAS_WEB_APP_URL</code> を設定すると連携します。
               </div>
             )}
 
-            <div key={viewingDateStr} className={`${slideEffect} px-4 flex flex-col gap-4 pb-4`}>
+            <div key={viewingDateStr} className={`${slideEffect} px-4 flex flex-col gap-4 pb-4 pt-4`}>
               {/* 入力フォーム */}
               <div className="space-y-3 bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-gray-100 relative">
                 
                 {/* 場所・人 */}
-              <div className="grid grid-cols-2 gap-2">
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-map-marker-alt text-gray-400 text-xs"></i></div>
-                  <input type="text" value={where} onChange={(e) => setWhere(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="お店(例: 地名_店名)" disabled={isSaving} />
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-map-marker-alt text-gray-400 text-xs"></i></div>
+                    <input type="text" value={where} onChange={(e) => setWhere(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="お店(例: 地名_店名)" disabled={isSaving} />
+                  </div>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-users text-gray-400 text-xs"></i></div>
+                    <input type="text" value={withWhom} onChange={(e) => setWithWhom(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="誰と" disabled={isSaving} />
+                  </div>
                 </div>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-users text-gray-400 text-xs"></i></div>
-                  <input type="text" value={withWhom} onChange={(e) => setWithWhom(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="誰と" disabled={isSaving} />
-                </div>
-              </div>
 
-              {/* 写真 4枚 */}
+                {/* 写真 4枚 */}
                 <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-200" onTouchStart={(e) => e.stopPropagation()}>
                   {images.map((img, idx) => (
                     <div key={idx} className="relative w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
@@ -1000,6 +990,7 @@
         }
       }, []);
 
+      // 2タップ目リセット用
       useEffect(() => {
         const handler = () => {
           if (currentYearRef.current) {
@@ -1040,7 +1031,7 @@
           <div ref={topObserverRef} className="h-1 w-full"></div>
 
           {years.map(year => (
-            <div key={year} ref={year === currentYear ? currentYearRef : null} className="mb-6 pt-2">
+            <div key={year} ref={year === currentYear ? currentYearRef : null} className="pb-8 pt-2 relative">
               <div className="sticky top-0 bg-white/95 backdrop-blur-sm z-10 p-3 border-b border-gray-100 mb-4 shadow-sm">
                 <h1 className="text-2xl font-bold text-red-500 tracking-tighter text-center">{year}年</h1>
               </div>
@@ -1290,7 +1281,7 @@
         () => setViewMode('monthly')
       );
 
-      // ダブルタップでランダムな月を表示するためのイベントリスナー
+      // ダブルタップでランダムな月を表示するためのイベントリスナー (2タップ目リセット用)
       useEffect(() => {
         const handler = () => {
           setViewMode('monthly');
