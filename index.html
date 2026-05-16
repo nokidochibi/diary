@@ -43,7 +43,7 @@
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
 </head>
-<body class="bg-gray-50 text-gray-800 font-sans">
+<body class="bg-gray-50 text-gray-800 font-sans overflow-hidden">
   <div id="root"></div>
 
   <script type="text/babel">
@@ -87,7 +87,6 @@
       return { onTouchStart, onTouchEnd };
     };
 
-    // Google Driveの画像を安定して表示するためのURL変換処理
     const formatImageUrl = (url) => {
       if (!url) return '';
       if (url.includes('drive.google.com/uc')) {
@@ -110,7 +109,6 @@
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     };
 
-    // 曜日取得用関数 (ブラウザのパース差異を防ぐため安全に分割処理)
     const getDayOfWeek = (dateStr) => {
       if (!dateStr) return '';
       const [y, m, d] = dateStr.split('-');
@@ -134,7 +132,6 @@
       return str;
     };
 
-    // 共通タグコンポーネント
     function TagList({ places, people, onOpenProfile, peopleProfiles = {} }) {
       if (!places?.length && !people?.length) return null;
       return (
@@ -160,7 +157,6 @@
       );
     }
 
-    // X埋め込みプレビューコンポーネント
     function TweetEmbed({ url }) {
       const containerRef = useRef(null);
 
@@ -193,7 +189,6 @@
       );
     }
 
-    // 画像圧縮処理
     const compressImage = (file) => {
       return new Promise((resolve) => {
         const reader = new FileReader();
@@ -225,7 +220,6 @@
     function App() {
       const [activeTab, setActiveTab] = useState('home');
       
-      // 検索タブの状態をAppで保持
       const [searchQuery, setSearchQuery] = useState('');
       const [searchFilterTag, setSearchFilterTag] = useState(null);
 
@@ -236,13 +230,10 @@
       
       const mainRef = useRef(null); 
       
-      // タップ挙動制御用（タブが切り替わったら 0 にリセットされる）
-      // 0: タブ移動直後
-      // 1: リセット後 (2タップ目完了)
-      // 2: (最上部移動後、実質0に戻す)
+      // 0: タブ移動直後, 1: リセット後(2タップ目完了), 2: 最上部(3タップ目完了)
       const [tabClickState, setTabClickState] = useState(0);
       const scrollPositions = useRef({ home: 0, calendar: 0, search: 0, insights: 0 });
-      // 2タップ目のリセットを発火させるためのキー
+      
       const [tabResetKeys, setTabResetKeys] = useState({ calendar: 0, insights: 0 });
 
       const todayStr = useMemo(() => {
@@ -287,12 +278,10 @@
         }
       }, []);
 
-      // メインコンテナのスクロール位置を保存
       const handleScroll = (e) => {
         scrollPositions.current[activeTab] = e.target.scrollTop;
       };
 
-      // タブ移動時にスクロール位置を復元し、タップ状態をリセット
       useEffect(() => {
         if (mainRef.current) {
           mainRef.current.scrollTo({ top: scrollPositions.current[activeTab] || 0, behavior: 'auto' });
@@ -354,38 +343,43 @@
         return { success: true };
       }, []);
 
-      // 抜本的見直し：タブごとのタップ挙動
-      // 1タップ目: 移動、2タップ目: リセット、3タップ目: 最上部へ (4回目はまたリセット)
+      // 【抜本的修正】タブタップ挙動
+      // 1タップ: 移動, 2タップ: リセット, 3タップ: 最上部へ (4タップ目は1に戻る)
       const handleTabClick = (targetTab) => {
         if (activeTab !== targetTab) {
-          // 1タップ目：タブ移動
+          // 1タップ目
           setActiveTab(targetTab);
           setTabClickState(0);
         } else {
           if (tabClickState === 0) {
-            // 2タップ目：状態リセット
+            // 2タップ目：各タブ固有のリセット
             if (targetTab === 'home') {
               setViewingDateStr(todayStr); // 今日のカードへ
-            } else if (targetTab === 'search') {
-              setSearchQuery('');          // 検索をクリア
-              setSearchFilterTag(null);
             } else if (targetTab === 'calendar') {
               setTabResetKeys(prev => ({ ...prev, calendar: prev.calendar + 1 })); // 中央へスクロール
+            } else if (targetTab === 'search') {
+              setSearchQuery('');          // 検索をクリアして候補表示状態に
+              setSearchFilterTag(null);
             } else if (targetTab === 'insights') {
-              setTabResetKeys(prev => ({ ...prev, insights: prev.insights + 1 }));
+              setTabResetKeys(prev => ({ ...prev, insights: prev.insights + 1 })); // 月間・今月に戻す
             }
             setTabClickState(1);
+          } else if (tabClickState === 1) {
+            // 3タップ目：最上部へスクロール
+            if (mainRef.current) {
+              mainRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+            setTabClickState(2);
           } else {
-            // 3タップ目：最上部へ移動
-            mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-            scrollPositions.current[targetTab] = 0;
-            setTabClickState(0); // 次は2タップ目(リセット)になるようにループ
+            // 4タップ目以降：再びリセット状態へ
+            setTabClickState(0);
+            handleTabClick(targetTab); // 再帰呼び出しで2タップ目の挙動を起こす
           }
         }
       };
 
       return (
-        <div className="min-h-screen bg-white flex flex-col relative">
+        <div className="h-[100dvh] w-full bg-white flex flex-col relative overflow-hidden">
           {isLoading && (
             <div className="absolute inset-0 bg-white/70 backdrop-blur-sm z-50 flex flex-col items-center justify-center">
               <i className="fas fa-spinner fa-spin text-blue-600 mb-2 text-3xl"></i>
@@ -393,8 +387,11 @@
             </div>
           )}
 
-          {/* iOSのstickyバグを回避するため、overflow-x-hidden ではなく overflow-x-clip を使用 */}
-          <main ref={mainRef} onScroll={handleScroll} className="flex-1 overflow-y-auto overflow-x-clip pb-20">
+          {/* 【抜本的修正】 
+            - 親を固定サイズ(h-[100dvh])にし、flex-1でここだけスクロールさせる。
+            - overflow-x-clip など邪魔なプロパティを排除。これによりstickyが完璧に動作します。
+          */}
+          <main ref={mainRef} onScroll={handleScroll} className="flex-1 overflow-y-auto w-full relative">
             {activeTab === 'home' && (
               <HomeTab 
                 viewingDateStr={viewingDateStr} 
@@ -418,6 +415,7 @@
                 onOpenProfile={setSelectedProfile}
                 peopleProfiles={peopleProfiles}
                 resetKey={tabResetKeys.calendar}
+                mainRef={mainRef}
               />
             )}
             {activeTab === 'search' && (
@@ -438,11 +436,12 @@
                 onOpenProfile={setSelectedProfile} 
                 peopleProfiles={peopleProfiles} 
                 resetKey={tabResetKeys.insights}
+                todayStr={todayStr}
               />
             )}
           </main>
 
-          <nav className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 flex justify-around items-center h-16 pb-safe z-40">
+          <nav className="w-full bg-white border-t border-gray-200 flex justify-around items-center h-16 pb-safe shrink-0 z-40">
             <button onClick={() => handleTabClick('home')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'home' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
               <i className="fas fa-pen-to-square text-xl"></i>
               <span className="text-[10px] font-medium">入力</span>
@@ -461,7 +460,6 @@
             </button>
           </nav>
 
-          {/* 個別プロフィール画面モーダル */}
           {selectedProfile && (
             <ProfileModal 
               profile={selectedProfile} 
@@ -632,7 +630,6 @@
                             </div>
                           </div>
 
-                          {/* 各日記の画像を1行(最大4枚)で横並びに表示 */}
                           {entry.images && entry.images.length > 0 && (
                             <div className="flex gap-1 w-full mb-3">
                               {entry.images.slice(0, 4).map((img, i) => (
@@ -835,7 +832,6 @@
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          {/* Sticky Header */}
           <div className="sticky top-0 left-0 w-full z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 px-4 py-3">
             <div className="max-w-lg mx-auto flex items-center justify-between bg-gray-50 rounded-2xl p-1.5 shadow-sm border border-gray-200">
               <button onClick={handlePrevDay} className="p-2 w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded-xl transition-colors active:scale-95">
@@ -863,10 +859,8 @@
             )}
 
             <div key={viewingDateStr} className={`${slideEffect} px-4 flex flex-col gap-4 pb-4 pt-4`}>
-              {/* 入力フォーム */}
               <div className="space-y-3 bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-gray-100 relative">
                 
-                {/* 場所・人 */}
                 <div className="grid grid-cols-2 gap-2">
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-map-marker-alt text-gray-400 text-xs"></i></div>
@@ -878,7 +872,6 @@
                   </div>
                 </div>
 
-                {/* 写真 4枚 */}
                 <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-200" onTouchStart={(e) => e.stopPropagation()}>
                   {images.map((img, idx) => (
                     <div key={idx} className="relative w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
@@ -895,7 +888,6 @@
                   )}
                 </div>
 
-                {/* できごと */}
                 <div className="relative">
                   <textarea value={what} onChange={(e) => setWhat(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none text-base bg-gray-50 placeholder-gray-400" rows="4" placeholder="できごと (XのURLを貼ると自動でツイートが表示されます)" disabled={isSaving}/>
                   {inputTweetUrls.length > 0 && <span className="absolute top-2 right-2 text-[10px] text-blue-500 bg-white/80 px-1 rounded"><i className="fab fa-twitter"></i> Xリンク検知</span>}
@@ -907,7 +899,6 @@
                   )}
                 </div>
 
-                {/* 保存ボタン */}
                 <div className="pt-2 flex items-center justify-between border-t border-gray-50">
                   <span className={`text-xs font-bold w-1/2 leading-tight ${saveMessage.includes('エラー') ? 'text-red-500' : 'text-green-600'}`}>{saveMessage}</span>
                   <button onClick={handleSave} disabled={isSaving} className={`flex items-center text-white px-5 py-2.5 rounded-2xl font-bold transition-all shadow-md ${isSaving ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700 active:scale-95'}`}>
@@ -976,7 +967,7 @@
     // ==========================================
     // カレンダータブ
     // ==========================================
-    function CalendarTab({ entries, todayStr, onSelectDate, onOpenProfile, peopleProfiles, resetKey }) {
+    function CalendarTab({ entries, todayStr, onSelectDate, onOpenProfile, peopleProfiles, resetKey, mainRef }) {
       const currentYear = new Date(todayStr).getFullYear();
       const [years, setYears] = useState(() => Array.from({ length: 11 }, (_, i) => currentYear - 10 + i));
       const [selectedDate, setSelectedDate] = useState(null);
@@ -999,27 +990,34 @@
       const bottomObserverRef = useRef(null);
       const currentYearRef = useRef(null);
 
+      // 【抜本的修正】「今日」または「今年のブロック」が確実に見えるよう中央にスクロール
+      const scrollToCenter = useCallback(() => {
+        if (!mainRef || !mainRef.current) return;
+        const todayEl = document.getElementById('today-calendar-btn');
+        const yearEl = document.getElementById('current-year-container');
+        const targetEl = todayEl || yearEl;
+        
+        if (targetEl) {
+          const mainRect = mainRef.current.getBoundingClientRect();
+          const targetRect = targetEl.getBoundingClientRect();
+          // スクロールコンテナの中央に要素が来るように計算
+          const scrollTop = mainRef.current.scrollTop + (targetRect.top - mainRect.top) - (mainRect.height / 2) + (targetRect.height / 2);
+          
+          mainRef.current.scrollTo({ top: scrollTop, behavior: 'smooth' });
+        }
+      }, [mainRef]);
+
       // 初回表示時
       useEffect(() => {
-        if (currentYearRef.current) {
-          currentYearRef.current.scrollIntoView({ behavior: 'auto', block: 'start' });
-        }
-      }, []);
+        setTimeout(scrollToCenter, 100);
+      }, [scrollToCenter]);
 
-      // 2タップ目リセット用 (今日要素へスムーズにスクロール)
+      // 2タップ目リセット用
       useEffect(() => {
         if (resetKey > 0) {
-          // 遅延させて確実に対象のDOMにスクロールできるようにする
-          setTimeout(() => {
-            const todayEl = document.getElementById('today-calendar-btn');
-            if (todayEl) {
-              todayEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            } else if (currentYearRef.current) {
-              currentYearRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-          }, 50);
+          setTimeout(scrollToCenter, 50);
         }
-      }, [resetKey]);
+      }, [resetKey, scrollToCenter]);
 
       useEffect(() => {
         const observer = new IntersectionObserver((entries) => {
@@ -1056,9 +1054,8 @@
           <div ref={topObserverRef} className="h-1 w-full"></div>
 
           {years.map(year => (
-            // 年ごとに独立したrelativeコンテナ。stickyヘッダーが下の年に当たると押し出される。
-            <div key={year} ref={year === currentYear ? currentYearRef : null} className="relative">
-              {/* bg-whiteを指定して、押し出されるときに下のコンテンツが透けないようにする */}
+            // 【抜本的修正】 bg-white と z-30 を設定し、透けずにロケット鉛筆になる構造
+            <div key={year} id={year === currentYear ? 'current-year-container' : undefined} ref={year === currentYear ? currentYearRef : null} className="relative">
               <div className="sticky top-0 bg-white z-30 px-3 py-2 border-b border-gray-200 shadow-sm">
                 <h1 className="text-xl sm:text-2xl font-bold text-red-500 tracking-tighter text-center">{year}年</h1>
               </div>
@@ -1300,10 +1297,9 @@
     // ==========================================
     // インサイト（振り返り）タブ
     // ==========================================
-    function InsightsTab({ entries, onOpenProfile, peopleProfiles, resetKey }) {
+    function InsightsTab({ entries, onOpenProfile, peopleProfiles, resetKey, todayStr }) {
       const [viewMode, setViewMode] = useState('monthly'); // 'monthly' | 'all'
-      const [randomJumpKey, setRandomJumpKey] = useState(0);
-
+      
       // ヘッダー部等でのスワイプでモードを切り替え
       const { onTouchStart, onTouchEnd } = useSwipe(
         () => setViewMode('all'),
@@ -1314,7 +1310,6 @@
       useEffect(() => {
         if (resetKey > 0) {
           setViewMode('monthly');
-          setRandomJumpKey(k => k + 1);
         }
       }, [resetKey]);
 
@@ -1343,10 +1338,10 @@
 
           <div className="mt-4">
             {viewMode === 'monthly' ? (
-              <MonthlyInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} randomJumpKey={randomJumpKey} />
+              <MonthlyInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} resetKey={resetKey} />
             ) : (
               <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-                <AllTimeInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
+                <AllTimeInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} todayStr={todayStr} />
               </div>
             )}
           </div>
@@ -1354,7 +1349,7 @@
       );
     }
 
-    function MonthlyInsights({ entries, onOpenProfile, peopleProfiles, randomJumpKey }) {
+    function MonthlyInsights({ entries, onOpenProfile, peopleProfiles, resetKey }) {
       const [targetDate, setTargetDate] = useState(new Date());
 
       const year = targetDate.getFullYear();
@@ -1374,21 +1369,12 @@
         setTargetDate(d);
       };
 
-      // ランダム月ジャンプ用
+      // 2タップ目：今月に戻す
       useEffect(() => {
-        if (randomJumpKey > 0) {
-          const monthsWithEntries = [...new Set(entries.filter(e => e.when).map(e => e.when.substring(0, 7)))];
-          if (monthsWithEntries.length > 0) {
-            const randomMonthStr = monthsWithEntries[Math.floor(Math.random() * monthsWithEntries.length)];
-            const [y, m] = randomMonthStr.split('-');
-            setTargetDate(new Date(parseInt(y), parseInt(m) - 1, 1));
-          } else {
-            const d = new Date();
-            d.setMonth(d.getMonth() - Math.floor(Math.random() * 24));
-            setTargetDate(d);
-          }
+        if (resetKey > 0) {
+          setTargetDate(new Date());
         }
-      }, [randomJumpKey, entries]);
+      }, [resetKey]);
 
       // 月間ハイライト内の左右スワイプによる月移動
       const { onTouchStart, onTouchEnd } = useSwipe(handleNextMonth, handlePrevMonth);
@@ -1481,18 +1467,28 @@
       );
     }
 
-    function AllTimeInsights({ entries, onOpenProfile, peopleProfiles }) {
+    function AllTimeInsights({ entries, onOpenProfile, peopleProfiles, todayStr }) {
       const { topPlaces, allPeople } = useMemo(() => {
         const placeMap = {};
         const peopleMap = {};
 
         entries.forEach(e => {
           splitTags(e.where).forEach(p => placeMap[p] = (placeMap[p] || 0) + 1);
-          splitTags(e.withWhom).forEach(p => peopleMap[p] = (peopleMap[p] || 0) + 1);
+          splitTags(e.withWhom).forEach(p => {
+            if (!peopleMap[p]) {
+              peopleMap[p] = { count: 0, dates: [] };
+            }
+            peopleMap[p].count += 1;
+            if (e.when) peopleMap[p].dates.push(e.when);
+          });
         });
 
         const sortedPlaces = Object.entries(placeMap).sort((a, b) => b[1] - a[1]).slice(0, 3);
-        const sortedPeople = Object.entries(peopleMap).sort((a, b) => b[1] - a[1]); // All
+        const sortedPeople = Object.entries(peopleMap).map(([name, data]) => ({
+          name,
+          count: data.count,
+          dates: data.dates
+        })).sort((a, b) => b.count - a.count);
 
         return {
           topPlaces: sortedPlaces,
@@ -1526,7 +1522,7 @@
             {allPeople.length > 0 ? (
               <ul className="space-y-3">
                 {allPeople.map((item, index) => {
-                  const name = item[0];
+                  const { name, count, dates } = item;
                   const xUser = peopleProfiles[name]?.xUsername;
                   
                   let badgeClass = "bg-gray-100 text-gray-500";
@@ -1534,16 +1530,45 @@
                   else if (index === 1) badgeClass = "bg-gray-200 text-gray-600";
                   else if (index === 2) badgeClass = "bg-orange-100 text-orange-700";
 
+                  // 会う時期の目安スコアを計算 (2回以上会っている場合のみ)
+                  let scoreDisplay = null;
+                  if (dates.length >= 2 && todayStr) {
+                    const todayDate = new Date(todayStr);
+                    const lastDate = new Date(dates[0]); // 前回
+                    const prevLastDate = new Date(dates[1]); // 前々回
+                    
+                    const msToDays = ms => Math.floor(ms / (1000 * 60 * 60 * 24));
+                    const daysSinceLast = msToDays(todayDate - lastDate); // 前回〜今日
+                    const daysBetween = msToDays(lastDate - prevLastDate); // 前々回〜前回
+                    
+                    const score = daysBetween - daysSinceLast;
+                    
+                    // マイナス(そろそろ会うべき)なら赤系、プラス(まだ余裕)なら青系
+                    const scoreColor = score < 0 ? 'text-red-500 bg-red-50 border-red-100' : 'text-blue-500 bg-blue-50 border-blue-100';
+                    const sign = score > 0 ? '+' : '';
+                    
+                    scoreDisplay = (
+                      <div className="flex flex-col items-end mr-3" title={`前回から${daysSinceLast}日経過 (本来のペースより${Math.abs(score)}日${score < 0 ? '遅れ' : '早い'})`}>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${scoreColor}`}>
+                          <i className="fas fa-stopwatch mr-1 opacity-70"></i>{sign}{score}
+                        </span>
+                      </div>
+                    );
+                  }
+
                   return (
                     <li key={name} onClick={() => onOpenProfile({type: 'person', name: name})} className="flex justify-between items-center bg-gray-50 hover:bg-gray-100 active:scale-95 transition-transform p-3 rounded-2xl cursor-pointer">
-                      <div className="flex items-center">
-                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${badgeClass}`}>
+                      <div className="flex items-center shrink min-w-0">
+                        <span className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${badgeClass}`}>
                           {index + 1}
                         </span>
-                        {xUser ? <img src={`https://unavatar.io/twitter/${xUser}`} className="w-6 h-6 rounded-full mr-2 object-cover border border-orange-200" loading="lazy" onError={(e)=>{e.target.style.display='none'}} /> : null}
-                        <span className="font-bold text-gray-700">{name}</span>
+                        {xUser ? <img src={`https://unavatar.io/twitter/${xUser}`} className="shrink-0 w-6 h-6 rounded-full mr-2 object-cover border border-orange-200" loading="lazy" onError={(e)=>{e.target.style.display='none'}} /> : null}
+                        <span className="font-bold text-gray-700 truncate">{name}</span>
                       </div>
-                      <span className="text-gray-500 text-sm font-bold">{item[1]}回</span>
+                      <div className="flex items-center shrink-0 ml-2">
+                        {scoreDisplay}
+                        <span className="text-gray-500 text-sm font-bold min-w-[2.5rem] text-right">{count}回</span>
+                      </div>
                     </li>
                   )
                 })}
