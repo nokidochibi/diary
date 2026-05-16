@@ -583,7 +583,7 @@
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-5 space-y-6 pb-10">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden p-5 space-y-6 pb-10">
               {stats ? (
                 <>
                   <div className="grid grid-cols-2 gap-3">
@@ -640,7 +640,7 @@
                             </div>
                           )}
 
-                          {entry.what && <p className="text-gray-700 text-[13px] whitespace-pre-wrap leading-relaxed mb-3">{entry.what}</p>}
+                          {entry.what && <p className="text-gray-700 text-[13px] whitespace-pre-wrap break-words leading-relaxed mb-3">{entry.what}</p>}
                           <TagList 
                             places={splitTags(entry.where).filter(p => !(!isPerson && p === name))} 
                             people={splitTags(entry.withWhom).filter(p => !(isPerson && p === name))} 
@@ -943,7 +943,7 @@
                             </div>
                           )}
 
-                          <p className="text-gray-800 whitespace-pre-wrap text-[15px] leading-relaxed mb-4">{entry.what}</p>
+                          <p className="text-gray-800 whitespace-pre-wrap break-words text-[15px] leading-relaxed mb-4">{entry.what}</p>
                           
                           {tweetUrls.length > 0 && (
                             <div className="flex flex-col gap-2 mb-4">
@@ -991,31 +991,30 @@
       const currentYearRef = useRef(null);
 
       // 【抜本的修正】「今日」または「今年のブロック」が確実に見えるよう中央にスクロール
-      const scrollToCenter = useCallback(() => {
-        if (!mainRef || !mainRef.current) return;
+      const scrollToCenter = useCallback((behavior = 'smooth') => {
         const todayEl = document.getElementById('today-calendar-btn');
         const yearEl = document.getElementById('current-year-container');
         const targetEl = todayEl || yearEl;
         
         if (targetEl) {
-          const mainRect = mainRef.current.getBoundingClientRect();
-          const targetRect = targetEl.getBoundingClientRect();
-          // スクロールコンテナの中央に要素が来るように計算
-          const scrollTop = mainRef.current.scrollTop + (targetRect.top - mainRect.top) - (mainRect.height / 2) + (targetRect.height / 2);
-          
-          mainRef.current.scrollTo({ top: scrollTop, behavior: 'smooth' });
+          targetEl.scrollIntoView({ behavior: behavior, block: 'center' });
         }
-      }, [mainRef]);
+      }, []);
 
       // 初回表示時
       useEffect(() => {
-        setTimeout(scrollToCenter, 100);
-      }, [scrollToCenter]);
+        const timer = setTimeout(() => {
+          if (mainRef && mainRef.current && mainRef.current.scrollTop === 0) {
+            scrollToCenter('auto');
+          }
+        }, 100);
+        return () => clearTimeout(timer);
+      }, [scrollToCenter, mainRef]);
 
       // 2タップ目リセット用
       useEffect(() => {
         if (resetKey > 0) {
-          setTimeout(scrollToCenter, 50);
+          scrollToCenter('smooth');
         }
       }, [resetKey, scrollToCenter]);
 
@@ -1090,7 +1089,7 @@
                         </div>
                       )}
 
-                      <p className="text-gray-800 whitespace-pre-wrap text-[15px] leading-relaxed mb-4">{selectedEntry.what}</p>
+                      <p className="text-gray-800 whitespace-pre-wrap break-words text-[15px] leading-relaxed mb-4">{selectedEntry.what}</p>
 
                       {tweetUrls.length > 0 && (
                         <div className="flex flex-col gap-2 mb-4">
@@ -1186,7 +1185,7 @@
       }, [query, filterTag, entries]);
 
       return (
-        <div className="p-4 max-w-lg mx-auto animate-fade-in">
+        <div className="p-4 max-w-lg mx-auto w-full animate-fade-in overflow-x-hidden">
           <div className="sticky top-0 bg-white/95 backdrop-blur-sm z-10 pt-4 pb-4 border-b border-gray-100">
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-search text-gray-400"></i></div>
@@ -1275,7 +1274,7 @@
                         </div>
                       )}
 
-                      <p className="text-gray-800 whitespace-pre-wrap text-[15px] leading-relaxed mb-4">{entry.what}</p>
+                      <p className="text-gray-800 whitespace-pre-wrap break-words text-[15px] leading-relaxed mb-4">{entry.what}</p>
                       
                       {tweetUrls.length > 0 && (
                         <div className="flex flex-col gap-2 mb-4">
@@ -1299,6 +1298,7 @@
     // ==========================================
     function InsightsTab({ entries, onOpenProfile, peopleProfiles, resetKey, todayStr }) {
       const [viewMode, setViewMode] = useState('monthly'); // 'monthly' | 'all'
+      const [randomJumpKey, setRandomJumpKey] = useState(0);
       
       // ヘッダー部等でのスワイプでモードを切り替え
       const { onTouchStart, onTouchEnd } = useSwipe(
@@ -1310,11 +1310,12 @@
       useEffect(() => {
         if (resetKey > 0) {
           setViewMode('monthly');
+          setRandomJumpKey(k => k + 1);
         }
       }, [resetKey]);
 
       return (
-        <div className="p-4 max-w-lg mx-auto animate-fade-in bg-gray-50 min-h-screen">
+        <div className="p-4 max-w-lg mx-auto w-full animate-fade-in overflow-x-hidden bg-gray-50 min-h-screen">
           <div 
             className="pt-4 pb-4 sticky top-0 bg-gray-50/95 backdrop-blur-sm z-10"
             onTouchStart={onTouchStart} 
@@ -1338,7 +1339,7 @@
 
           <div className="mt-4">
             {viewMode === 'monthly' ? (
-              <MonthlyInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} resetKey={resetKey} />
+              <MonthlyInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} randomJumpKey={randomJumpKey} />
             ) : (
               <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
                 <AllTimeInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} todayStr={todayStr} />
@@ -1349,7 +1350,7 @@
       );
     }
 
-    function MonthlyInsights({ entries, onOpenProfile, peopleProfiles, resetKey }) {
+    function MonthlyInsights({ entries, onOpenProfile, peopleProfiles, randomJumpKey }) {
       const [targetDate, setTargetDate] = useState(new Date());
 
       const year = targetDate.getFullYear();
@@ -1369,12 +1370,21 @@
         setTargetDate(d);
       };
 
-      // 2タップ目：今月に戻す
+      // ランダム月ジャンプ用
       useEffect(() => {
-        if (resetKey > 0) {
-          setTargetDate(new Date());
+        if (randomJumpKey > 0) {
+          const monthsWithEntries = [...new Set(entries.filter(e => e.when).map(e => e.when.substring(0, 7)))];
+          if (monthsWithEntries.length > 0) {
+            const randomMonthStr = monthsWithEntries[Math.floor(Math.random() * monthsWithEntries.length)];
+            const [y, m] = randomMonthStr.split('-');
+            setTargetDate(new Date(parseInt(y), parseInt(m) - 1, 1));
+          } else {
+            const d = new Date();
+            d.setMonth(d.getMonth() - Math.floor(Math.random() * 24));
+            setTargetDate(d);
+          }
         }
-      }, [resetKey]);
+      }, [randomJumpKey, entries]);
 
       // 月間ハイライト内の左右スワイプによる月移動
       const { onTouchStart, onTouchEnd } = useSwipe(handleNextMonth, handlePrevMonth);
