@@ -230,8 +230,9 @@
       
       const mainRef = useRef(null); 
       
-      // 0: タブ移動直後, 1: リセット後(2タップ目完了), 2: 最上部(3タップ目完了)
-      const [tabClickState, setTabClickState] = useState(0);
+      // ダブルタップ・トリプルタップ判定用
+      const tabClickCountRef = useRef(0);
+      const tabClickTimeoutRef = useRef(null);
       const scrollPositions = useRef({ home: 0, calendar: 0, search: 0, insights: 0 });
       
       const [tabResetKeys, setTabResetKeys] = useState({ calendar: 0, insights: 0 });
@@ -286,7 +287,6 @@
         if (mainRef.current) {
           mainRef.current.scrollTo({ top: scrollPositions.current[activeTab] || 0, behavior: 'auto' });
         }
-        setTabClickState(0);
       }, [activeTab]);
 
       const updatePersonProfile = async (name, data) => {
@@ -343,38 +343,50 @@
         return { success: true };
       }, []);
 
-      // 【抜本的修正】タブタップ挙動
-      // 1タップ: 移動, 2タップ: リセット, 3タップ: 最上部へ (4タップ目は1に戻る)
+      // 【抜本的修正】タブタップ挙動 (時間判定あり)
+      // ダブルタップ: リセット, トリプルタップ: 最上部へ
       const handleTabClick = (targetTab) => {
         if (activeTab !== targetTab) {
-          // 1タップ目
+          // タブ移動
           setActiveTab(targetTab);
-          setTabClickState(0);
-        } else {
-          if (tabClickState === 0) {
-            // 2タップ目：各タブ固有のリセット
-            if (targetTab === 'home') {
-              setViewingDateStr(todayStr); // 今日のカードへ
-            } else if (targetTab === 'calendar') {
-              setTabResetKeys(prev => ({ ...prev, calendar: prev.calendar + 1 })); // 中央へスクロール
-            } else if (targetTab === 'search') {
-              setSearchQuery('');          // 検索をクリアして候補表示状態に
-              setSearchFilterTag(null);
-            } else if (targetTab === 'insights') {
-              setTabResetKeys(prev => ({ ...prev, insights: prev.insights + 1 })); // 月間・今月に戻す
-            }
-            setTabClickState(1);
-          } else if (tabClickState === 1) {
-            // 3タップ目：最上部へスクロール
-            if (mainRef.current) {
-              mainRef.current.scrollTo({ top: 0, behavior: 'smooth' });
-            }
-            setTabClickState(2);
-          } else {
-            // 4タップ目以降：再びリセット状態へ
-            setTabClickState(0);
-            handleTabClick(targetTab); // 再帰呼び出しで2タップ目の挙動を起こす
+          tabClickCountRef.current = 0;
+          if (tabClickTimeoutRef.current) clearTimeout(tabClickTimeoutRef.current);
+          return;
+        }
+
+        // 同じタブの場合はクリック回数をカウント
+        tabClickCountRef.current += 1;
+
+        if (tabClickTimeoutRef.current) {
+          clearTimeout(tabClickTimeoutRef.current);
+        }
+
+        // 400ms以内に次のタップがなければカウントをリセット（ゆっくりタップは無視される）
+        tabClickTimeoutRef.current = setTimeout(() => {
+          tabClickCountRef.current = 0;
+        }, 400);
+
+        // アクションの実行
+        if (tabClickCountRef.current === 2) {
+          // 2連打（ダブルタップ）：各タブ固有のリセット
+          if (targetTab === 'home') {
+            setViewingDateStr(todayStr); 
+          } else if (targetTab === 'calendar') {
+            setTabResetKeys(prev => ({ ...prev, calendar: prev.calendar + 1 })); 
+          } else if (targetTab === 'search') {
+            setSearchQuery('');          
+            setSearchFilterTag(null);
+          } else if (targetTab === 'insights') {
+            setTabResetKeys(prev => ({ ...prev, insights: prev.insights + 1 })); 
           }
+        } else if (tabClickCountRef.current === 3) {
+          // 3連打（トリプルタップ）：最上部へ
+          if (mainRef.current) {
+            mainRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+          // トリプルタップまで完了したらリセット
+          tabClickCountRef.current = 0;
+          clearTimeout(tabClickTimeoutRef.current);
         }
       };
 
@@ -991,15 +1003,27 @@
       const currentYearRef = useRef(null);
 
       // 【抜本的修正】「今日」または「今年のブロック」が確実に見えるよう中央にスクロール
+      // iOS Safariの長距離スクロールバグを防ぐため、座標計算方式に変更
       const scrollToCenter = useCallback((behavior = 'smooth') => {
         const todayEl = document.getElementById('today-calendar-btn');
         const yearEl = document.getElementById('current-year-container');
         const targetEl = todayEl || yearEl;
         
-        if (targetEl) {
-          targetEl.scrollIntoView({ behavior: behavior, block: 'center' });
+        if (targetEl && mainRef && mainRef.current) {
+          const container = mainRef.current;
+          const containerRect = container.getBoundingClientRect();
+          const targetRect = targetEl.getBoundingClientRect();
+          
+          const relativeTop = targetRect.top - containerRect.top;
+          const targetScrollTop = container.scrollTop + relativeTop - (containerRect.height / 2) + (targetRect.height / 2);
+          
+          // 移動距離が長すぎる場合はバグ回避のため強制的に auto (一瞬で移動) にする
+          const distance = Math.abs(targetScrollTop - container.scrollTop);
+          const finalBehavior = (behavior === 'smooth' && distance > 2000) ? 'auto' : behavior;
+
+          container.scrollTo({ top: targetScrollTop, behavior: finalBehavior });
         }
-      }, []);
+      }, [mainRef]);
 
       // 初回表示時
       useEffect(() => {
