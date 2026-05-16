@@ -514,10 +514,8 @@
         const daysCount = relatedEntries.length;
         
         const relatedMap = {};
-        const images = [];
         
         relatedEntries.forEach(e => {
-          if (e.images) images.push(...e.images);
           const tags = type === 'person' ? splitTags(e.where) : splitTags(e.withWhom);
           tags.forEach(t => {
             relatedMap[t] = (relatedMap[t] || 0) + 1;
@@ -526,7 +524,7 @@
         
         const topRelated = Object.entries(relatedMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
         
-        return { firstDate, daysCount, topRelated, images };
+        return { firstDate, daysCount, topRelated };
       }, [relatedEntries, type]);
 
       return (
@@ -589,17 +587,6 @@
                     </div>
                   </div>
 
-                  {stats.images.length > 0 && (
-                    <div>
-                      <h3 className="text-xs font-bold text-gray-500 mb-3 ml-1 uppercase tracking-wider"><i className="fas fa-camera mr-2"></i>Photos</h3>
-                      <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
-                        {stats.images.map((img, i) => (
-                          <img key={i} src={formatImageUrl(img)} className="w-24 h-24 object-cover rounded-2xl border border-gray-200 flex-shrink-0 shadow-sm" />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
                   {stats.topRelated.length > 0 && (
                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                       <h3 className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wider">
@@ -632,6 +619,18 @@
                               <button onClick={() => { onSelectDate(entry.when); onClose(); }} className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors active:scale-95"><i className="fas fa-pen mr-1"></i>編集</button>
                             </div>
                           </div>
+
+                          {/* 各日記の画像を1行(最大4枚)で横並びに表示 */}
+                          {entry.images && entry.images.length > 0 && (
+                            <div className="flex gap-1 w-full mb-3">
+                              {entry.images.slice(0, 4).map((img, i) => (
+                                <div key={`modal-img-${idx}-${i}`} className="flex-1 aspect-square rounded-xl overflow-hidden bg-gray-50 border border-gray-100 shadow-sm">
+                                  <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
                           {entry.what && <p className="text-gray-700 text-[13px] whitespace-pre-wrap leading-relaxed mb-3">{entry.what}</p>}
                           <TagList 
                             places={splitTags(entry.where).filter(p => !(!isPerson && p === name))} 
