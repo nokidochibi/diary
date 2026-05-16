@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>複数年日記</title>
   
-  <!-- 各種ライブラリの読み込み -->
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -17,7 +16,6 @@
     body { -webkit-tap-highlight-color: transparent; }
     .pb-safe { padding-bottom: env(safe-area-inset-bottom, 20px); }
     
-    /* アニメーション設定 */
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     @keyframes zoomIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
     @keyframes slideUp { from { opacity: 0; transform: translateY(100%); } to { opacity: 1; transform: translateY(0); } }
@@ -37,14 +35,12 @@
 <body class="bg-gray-50 text-gray-800 font-sans">
   <div id="root"></div>
 
-  <!-- 【重要】先にComponents.jsを読み込みます -->
+  <!-- 部品集を先に読み込む -->
   <script type="text/babel" src="Components.js" data-presets="react"></script>
 
-  <!-- アプリのメインロジック（頭脳部分） -->
   <script type="text/babel">
     const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
-    // ★ GASのURL（あなたのURLをここに貼ってください） ★
     const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx94R3YWE7w_IfmSTqz9_FNlEUNPWNkq4auvvn0BMM7b2z4wwjBtJpT_D_0XgATh9zb/exec"; 
 
     function App() {
@@ -68,7 +64,6 @@
       
       const [viewingDateStr, setViewingDateStr] = useState(todayStr);
 
-      // データ取得
       useEffect(() => {
         const fetchEntries = async () => {
           if (!GAS_WEB_APP_URL) return;
@@ -82,25 +77,18 @@
               setEntries(data.entries.filter(e => e.when).sort((a, b) => new Date(b.when) - new Date(a.when)));
               if (data.profiles) setPeopleProfiles(data.profiles);
             }
-          } catch (error) {
-            console.error("取得失敗:", error);
-          } finally {
-            setIsLoading(false);
-          }
+          } catch (error) { console.error("通信エラー", error); }
+          finally { setIsLoading(false); }
         };
         fetchEntries();
       }, []);
 
-      // 保存処理
       const saveEntry = useCallback(async (entry) => {
         setEntries(prev => {
           let newEntries = [...prev];
           const existingIndex = newEntries.findIndex(e => e.when === entry.when);
-          if (existingIndex >= 0) {
-            newEntries[existingIndex] = { ...newEntries[existingIndex], ...entry };
-          } else {
-            newEntries.unshift({ ...entry, id: Date.now().toString() });
-          }
+          if (existingIndex >= 0) newEntries[existingIndex] = { ...newEntries[existingIndex], ...entry };
+          else newEntries.unshift({ ...entry, id: Date.now().toString() });
           return newEntries;
         });
 
@@ -111,28 +99,22 @@
               headers: { 'Content-Type': 'text/plain;charset=utf-8' },
               body: JSON.stringify(entry), 
             });
-          } catch (error) {
-            console.error("保存失敗:", error);
-          }
+          } catch (e) { console.error("保存失敗", e); }
         }
         return { success: true };
       }, []);
 
-      // プロフィール更新
       const updatePersonProfile = async (name, data) => {
         setPeopleProfiles(prev => ({ ...prev, [name]: { ...(prev[name] || {}), ...data } }));
         if (GAS_WEB_APP_URL) {
-          try {
-            await fetch(GAS_WEB_APP_URL, {
-              method: 'POST',
-              headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
-              body: JSON.stringify({ type: 'profile', name, xUsername: data.xUsername }),
-            });
-          } catch (e) { console.error(e); }
+          await fetch(GAS_WEB_APP_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+            body: JSON.stringify({ type: 'profile', name, xUsername: data.xUsername }),
+          });
         }
       };
 
-      // タブクリック時の挙動
       const handleTabClick = (targetTab) => {
         if (activeTab !== targetTab) {
           setActiveTab(targetTab);
@@ -154,12 +136,13 @@
       return (
         <div className="min-h-screen bg-white flex flex-col relative">
           {isLoading && (
-            <div className="absolute inset-0 bg-white/70 backdrop-blur-sm z-50 flex items-center justify-center">
-              同期中...
+            <div className="absolute inset-0 bg-white/70 backdrop-blur-sm z-50 flex flex-col items-center justify-center">
+              <i className="fas fa-spinner fa-spin text-blue-600 mb-2 text-3xl"></i>
+              <p className="text-sm font-medium text-gray-600">同期中...</p>
             </div>
           )}
 
-          <main ref={mainRef} className="flex-1 overflow-y-auto overflow-x-hidden pb-20 scroll-smooth">
+          <main ref={mainRef} onScroll={(e) => { scrollPositions.current[activeTab] = e.target.scrollTop; }} className="flex-1 overflow-y-auto overflow-x-hidden pb-20 scroll-smooth">
             {activeTab === 'home' && (
               <window.HomeTab 
                 viewingDateStr={viewingDateStr} setViewingDateStr={setViewingDateStr} todayStr={todayStr} 
@@ -186,22 +169,12 @@
           </main>
 
           <nav className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 flex justify-around items-center h-16 pb-safe z-40">
-            <button onClick={() => handleTabClick('home')} className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'home' ? 'text-blue-600' : 'text-gray-400'}`}>
-              <i className="fas fa-pen-to-square text-xl"></i>
-              <span className="text-[10px] font-medium">入力</span>
-            </button>
-            <button onClick={() => handleTabClick('calendar')} className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'calendar' ? 'text-blue-600' : 'text-gray-400'}`}>
-              <i className="fas fa-calendar text-xl"></i>
-              <span className="text-[10px] font-medium">カレンダー</span>
-            </button>
-            <button onClick={() => handleTabClick('search')} className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'search' ? 'text-blue-600' : 'text-gray-400'}`}>
-              <i className="fas fa-search text-xl"></i>
-              <span className="text-[10px] font-medium">検索</span>
-            </button>
-            <button onClick={() => handleTabClick('insights')} className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'insights' ? 'text-blue-600' : 'text-gray-400'}`}>
-              <i className="fas fa-chart-pie text-xl"></i>
-              <span className="text-[10px] font-medium">振り返り</span>
-            </button>
+            {['home', 'calendar', 'search', 'insights'].map(t => (
+              <button key={t} onClick={() => handleTabClick(t)} className={`flex flex-col items-center justify-center w-full h-full ${activeTab === t ? 'text-blue-600' : 'text-gray-400'}`}>
+                <i className={`fas fa-${t==='home'?'pen-to-square':t==='calendar'?'calendar':t==='search'?'search':'chart-pie'} text-xl`}></i>
+                <span className="text-[10px] font-medium">{t==='home'?'入力':t==='calendar'?'カレンダー':t==='search'?'検索':'振り返り'}</span>
+              </button>
+            ))}
           </nav>
 
           {selectedProfile && (
