@@ -381,7 +381,6 @@
         return { success: true };
       }, []);
 
-      // ★追加・修正: 既存の日記とTopicsシートの両方からすべてのトピックを収集して候補にする
       const allAvailableTopics = useMemo(() => {
         const topicsSet = new Set(Object.keys(topicsWiki));
         entries.forEach(e => {
@@ -390,7 +389,6 @@
         return Array.from(topicsSet).sort((a, b) => a.localeCompare(b, 'ja'));
       }, [entries, topicsWiki]);
 
-      // ★修正: シングルタップとダブルタップの挙動を整理
       const handleTabClick = (targetTab) => {
         if (activeTab !== targetTab) {
           setActiveTab(targetTab);
@@ -402,7 +400,6 @@
         tabClickCountRef.current += 1;
 
         if (tabClickCountRef.current === 1) {
-          // 1回目のタップ：少し待ってダブルタップが来なければシングルタップとしてトップへスクロール
           clickTimerRef.current = setTimeout(() => {
             if (tabClickCountRef.current === 1) {
               if (mainRef.current) {
@@ -412,7 +409,6 @@
             tabClickCountRef.current = 0;
           }, 300); 
         } else if (tabClickCountRef.current === 2) {
-          // 2回目のタップ（ダブルタップ）：各タブ固有のランダムアクションなどを実行
           clearTimeout(clickTimerRef.current);
           tabClickCountRef.current = 0;
           
@@ -505,13 +501,13 @@
           </main>
 
           <nav className="w-full bg-white border-t border-gray-200 flex justify-around items-center h-16 pb-safe shrink-0 z-40">
-            <button onClick={() => handleTabClick('home')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'home' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
-              <i className="fas fa-pen-to-square text-xl"></i>
-              <span className="text-[10px] font-medium">入力</span>
-            </button>
             <button onClick={() => handleTabClick('calendar')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'calendar' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
               <i className="fas fa-calendar text-xl"></i>
               <span className="text-[10px] font-medium">カレンダー</span>
+            </button>
+            <button onClick={() => handleTabClick('home')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'home' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
+              <i className="fas fa-pen-to-square text-xl"></i>
+              <span className="text-[10px] font-medium">入力</span>
             </button>
             <button onClick={() => handleTabClick('search')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'search' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
               <i className="fas fa-search text-xl"></i>
@@ -951,7 +947,6 @@
 
     function CalendarTab({ entries, todayStr, onSelectDate, onOpenProfile, peopleProfiles, resetKey, mainRef }) {
       const currentYear = new Date(todayStr).getFullYear();
-      // ★修正: カレンダーの初期表示年を「現在年-2」〜「現在年+2」の5年間にし、今年が中心にくるように変更
       const [years, setYears] = useState(() => Array.from({ length: 5 }, (_, i) => currentYear - 2 + i));
       const [selectedDate, setSelectedDate] = useState(null);
       const months = Array.from({ length: 12 }, (_, i) => i);
@@ -1021,7 +1016,7 @@
               } else if (entry.target === bottomObserverRef.current) {
                 setYears(prev => {
                   const last = prev[prev.length - 1];
-                  if (last >= currentYear + 10) return prev; // 無限スクロールの制限
+                  if (last >= currentYear + 10) return prev; 
                   const nextYears = [];
                   for (let i = 1; i <= 3; i++) {
                     nextYears.push(last + i);
@@ -1154,7 +1149,6 @@
 
       const popularTopics = useMemo(() => {
         const map = {};
-        // ★修正: availableTopics(トピック候補全体)をベースにしつつ、使われた回数でソートする
         availableTopics.forEach(t => map[t] = 0);
         entries.forEach(e => getEntryTopics(e).forEach(p => map[p] = (map[p] || 0) + 1));
         
@@ -1484,7 +1478,6 @@
       );
     }
 
-    // ★修正: 全期間インサイトから「よく行くお店」を廃止し、「よく会う人」のみに整理
     function AllTimeInsights({ entries, onOpenProfile, peopleProfiles, todayStr }) {
       const { allPeople } = useMemo(() => {
         const peopleMap = {};
