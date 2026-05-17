@@ -402,7 +402,11 @@
         if (tabClickCountRef.current === 1) {
           clickTimerRef.current = setTimeout(() => {
             if (tabClickCountRef.current === 1) {
-              if (mainRef.current) {
+              // カレンダーはシングルタップでトップではなく「今日を真ん中」にする
+              if (targetTab === 'calendar') {
+                setTabResetKeys(prev => ({ ...prev, calendar: prev.calendar + 1 }));
+                setViewingDateStr(todayStr); 
+              } else if (mainRef.current) {
                 mainRef.current.scrollTo({ top: 0, behavior: 'smooth' });
               }
             }
@@ -432,9 +436,6 @@
             }
           } else if (targetTab === 'insights') {
             setTabResetKeys(prev => ({ ...prev, insights: prev.insights + 1 })); 
-          } else if (targetTab === 'calendar') {
-             setTabResetKeys(prev => ({ ...prev, calendar: prev.calendar + 1 }));
-             setViewingDateStr(todayStr); 
           }
         }
       };
@@ -496,6 +497,7 @@
                 peopleProfiles={peopleProfiles} 
                 resetKey={tabResetKeys.insights}
                 todayStr={todayStr}
+                onSelectDate={(date) => { setViewingDateStr(date); setActiveTab('home'); }}
               />
             )}
           </main>
@@ -549,6 +551,7 @@
       
       const [saveMessage, setSaveMessage] = useState('');
       const [isSaving, setIsSaving] = useState(false);
+      const [showPreview, setShowPreview] = useState(false);
 
       const [slideEffect, setSlideEffect] = useState('animate-fade-in');
       const [lastLoadedDate, setLastLoadedDate] = useState(null);
@@ -874,13 +877,60 @@
                 </div>
 
                 <div className="pt-2 flex items-center justify-between border-t border-gray-50">
-                  <span className={`text-xs font-bold w-1/2 leading-tight ${saveMessage.includes('エラー') ? 'text-red-500' : 'text-green-600'}`}>{saveMessage}</span>
-                  <button onClick={handleSave} disabled={isSaving} className={`flex items-center text-white px-5 py-2.5 rounded-2xl font-bold transition-all shadow-md ${isSaving ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700 active:scale-95'}`}>
-                    {isSaving ? <i className="fas fa-spinner fa-spin mr-2"></i> : <i className="fas fa-check mr-2"></i>}
-                    {isSaving ? '保存中...' : '保存'}
-                  </button>
+                  <span className={`text-xs font-bold w-1/3 leading-tight ${saveMessage.includes('エラー') ? 'text-red-500' : 'text-green-600'}`}>{saveMessage}</span>
+                  <div className="flex gap-2 w-2/3 justify-end">
+                    <button onClick={() => setShowPreview(true)} disabled={isSaving} className="flex items-center text-gray-600 bg-gray-100 px-4 py-2.5 rounded-2xl font-bold transition-all shadow-sm hover:bg-gray-200 active:scale-95">
+                      <i className="fas fa-eye"></i><span className="ml-1 text-xs">プレビュー</span>
+                    </button>
+                    <button onClick={handleSave} disabled={isSaving} className={`flex items-center text-white px-5 py-2.5 rounded-2xl font-bold transition-all shadow-md ${isSaving ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700 active:scale-95'}`}>
+                      {isSaving ? <i className="fas fa-spinner fa-spin mr-2"></i> : <i className="fas fa-check mr-2"></i>}
+                      {isSaving ? '保存中...' : '保存'}
+                    </button>
+                  </div>
                 </div>
               </div>
+
+              {showPreview && (
+                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowPreview(false)}>
+                  <div className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-xl animate-zoom-in max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                    <div className="p-4 border-b flex justify-between items-center bg-gray-50 flex-shrink-0">
+                      <h3 className="font-bold text-gray-800">プレビュー</h3>
+                      <button onClick={() => setShowPreview(false)} className="w-8 h-8 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded-full"><i className="fas fa-times"></i></button>
+                    </div>
+                    <div className="p-6 overflow-y-auto">
+                      <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
+                        <div className="text-sm font-bold text-blue-600 mb-3 border-b border-gray-50 pb-2">
+                          {viewingDateStr.replace(/-/g, '/')} <span className="text-xs">({getDayOfWeek(viewingDateStr)})</span>
+                        </div>
+                        {images && images.length > 0 && (
+                          <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-white p-1 rounded-2xl border border-gray-100 mb-4">
+                            {images.map((img, i) => (
+                              <div key={`preview-img-${i}`} className="w-full h-full bg-gray-50 rounded-xl overflow-hidden shadow-sm">
+                                <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <p className="text-gray-800 whitespace-pre-wrap break-words text-[15px] leading-relaxed mb-4">
+                          {getDisplayWhat({ topic1, what1, topic2, what2 })}
+                        </p>
+                        {twitterUrl && extractTweetUrls(twitterUrl).length > 0 && (
+                          <div className="flex flex-col gap-2 mb-4">
+                            {extractTweetUrls(twitterUrl).map((url, i) => <TweetEmbed key={`preview-${url}-${i}`} url={url} />)}
+                          </div>
+                        )}
+                        <TagList 
+                          places={splitTags(where)} 
+                          people={splitTags(withWhom)} 
+                          topics={[topic1, topic2].map(t => t?.trim()).filter(Boolean)} 
+                          onOpenProfile={() => {}} 
+                          peopleProfiles={peopleProfiles} 
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="mt-4">
                 <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
@@ -1303,7 +1353,7 @@
       );
     }
 
-    function InsightsTab({ entries, onOpenProfile, peopleProfiles, resetKey, todayStr }) {
+    function InsightsTab({ entries, onOpenProfile, peopleProfiles, resetKey, todayStr, onSelectDate }) {
       const [viewMode, setViewMode] = useState('monthly'); 
       
       const { onTouchStart, onTouchEnd } = useSwipe(
@@ -1320,7 +1370,7 @@
       return (
         <div className="p-4 max-w-lg mx-auto w-full animate-fade-in overflow-x-hidden bg-gray-50 min-h-screen">
           <div 
-            className="pt-4 pb-4 sticky top-0 bg-gray-50/95 backdrop-blur-sm z-10"
+            className="pt-4 pb-4 sticky top-0 bg-gray-50/95 backdrop-blur-sm z-20"
             onTouchStart={onTouchStart} 
             onTouchEnd={onTouchEnd}
           >
@@ -1340,9 +1390,9 @@
             </div>
           </div>
 
-          <div className="mt-4">
+          <div>
             {viewMode === 'monthly' ? (
-              <MonthlyInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} resetKey={resetKey} />
+              <MonthlyInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} resetKey={resetKey} onSelectDate={onSelectDate} />
             ) : (
               <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
                 <AllTimeInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} todayStr={todayStr} />
@@ -1353,12 +1403,14 @@
       );
     }
 
-    function MonthlyInsights({ entries, onOpenProfile, peopleProfiles, resetKey }) {
+    function MonthlyInsights({ entries, onOpenProfile, peopleProfiles, resetKey, onSelectDate }) {
       const [targetDate, setTargetDate] = useState(new Date());
 
       const year = targetDate.getFullYear();
       const month = targetDate.getMonth() + 1;
       const monthPrefix = `${year}-${String(month).padStart(2, '0')}`;
+      
+      const isThisMonth = year === new Date().getFullYear() && month === new Date().getMonth() + 1;
 
       const monthlyEntries = useMemo(() => entries.filter(e => e.when && e.when.startsWith(monthPrefix)), [entries, monthPrefix]);
 
@@ -1371,6 +1423,9 @@
         const d = new Date(targetDate);
         d.setMonth(d.getMonth() + 1);
         setTargetDate(d);
+      };
+      const handleThisMonth = () => {
+        setTargetDate(new Date());
       };
 
       useEffect(() => {
@@ -1393,12 +1448,16 @@
       const stats = useMemo(() => {
         const placeMap = {};
         const peopleMap = {};
+        const topicMap = {};
         const monthImages = [];
 
         monthlyEntries.forEach(e => {
           splitTags(e.where).forEach(p => placeMap[p] = (placeMap[p] || 0) + 1);
           splitTags(e.withWhom).forEach(p => peopleMap[p] = (peopleMap[p] || 0) + 1);
-          if (e.images) monthImages.push(...e.images);
+          getEntryTopics(e).forEach(p => topicMap[p] = (topicMap[p] || 0) + 1);
+          if (e.images) {
+            e.images.forEach(img => monthImages.push({ url: img, date: e.when }));
+          }
         });
 
         const sortMap = (map) => Object.entries(map).sort((a, b) => b[1] - a[1]);
@@ -1407,6 +1466,7 @@
           totalDays: monthlyEntries.length,
           topPlaces: sortMap(placeMap),
           topPeople: sortMap(peopleMap),
+          topTopics: sortMap(topicMap),
           images: monthImages
         };
       }, [monthlyEntries]);
@@ -1417,14 +1477,23 @@
           onTouchStart={(e) => { e.stopPropagation(); onTouchStart(e); }}
           onTouchEnd={(e) => { e.stopPropagation(); onTouchEnd(e); }}
         >
-          <div className="flex items-center justify-between bg-white rounded-2xl p-2 shadow-sm border border-gray-100">
-            <button onClick={handlePrevMonth} className="w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-xl"><i className="fas fa-chevron-left"></i></button>
-            <span className="font-bold text-lg text-gray-800">{year}年 {month}月</span>
-            <button onClick={handleNextMonth} className="w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-xl"><i className="fas fa-chevron-right"></i></button>
+          <div className="sticky top-[72px] z-10 pb-4 bg-gray-50/95 backdrop-blur-sm -mx-4 px-4 pt-1">
+            <div className="flex items-center justify-between bg-white rounded-2xl p-2 shadow-sm border border-gray-100">
+              <button onClick={handlePrevMonth} className="w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-xl"><i className="fas fa-chevron-left"></i></button>
+              <div className="text-center flex flex-col items-center flex-1">
+                <span className="font-bold text-lg text-gray-800">{year}年 {month}月</span>
+                {!isThisMonth && (
+                  <button onClick={handleThisMonth} className="text-[10px] text-blue-600 font-bold flex items-center mt-0.5 bg-blue-50 px-2.5 py-0.5 rounded-full active:scale-95">
+                    <i className="fas fa-calendar-day mr-1"></i> 今月へ戻る
+                  </button>
+                )}
+              </div>
+              <button onClick={handleNextMonth} className="w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-xl"><i className="fas fa-chevron-right"></i></button>
+            </div>
           </div>
 
           {monthlyEntries.length === 0 ? (
-            <div className="text-center py-16 bg-white rounded-3xl border border-gray-100 shadow-sm">
+            <div className="text-center py-16 bg-white rounded-3xl border border-gray-100 shadow-sm mt-4">
               <i className="fas fa-calendar-times text-4xl mb-4 text-gray-200"></i>
               <p className="text-sm text-gray-400 font-medium">この月の記録はありません</p>
             </div>
@@ -1459,14 +1528,27 @@
                   </div>
                 </div>
               )}
+              
+              {stats.topTopics.length > 0 && (
+                <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+                  <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-layer-group text-purple-500 mr-2"></i>使ったトピック</h3>
+                  <div className="flex flex-wrap gap-2">
+                     {stats.topTopics.map(([name, count]) => (
+                       <button key={name} onClick={() => onOpenProfile({type: 'topic', name})} className="px-3 py-1.5 bg-purple-50 text-purple-700 text-xs font-bold rounded-xl border border-purple-100 active:scale-95 shadow-sm flex items-center">
+                         {name} <span className="opacity-50 ml-1.5 font-medium">{count}回</span>
+                       </button>
+                     ))}
+                  </div>
+                </div>
+              )}
 
               {stats.images.length > 0 && (
                 <div>
                   <h3 className="text-gray-500 text-xs font-bold mb-3 ml-1 uppercase tracking-wider"><i className="fas fa-image mr-2"></i>今月の写真</h3>
                   <div className="grid grid-cols-3 gap-2">
-                    {stats.images.map((img, i) => (
-                      <div key={i} className="aspect-square w-full rounded-2xl overflow-hidden border border-gray-200 shadow-sm bg-gray-50">
-                        <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
+                    {stats.images.map((imgObj, i) => (
+                      <div key={i} onClick={() => onSelectDate(imgObj.date)} className="aspect-square w-full rounded-2xl overflow-hidden border border-gray-200 shadow-sm bg-gray-50 cursor-pointer hover:opacity-80 transition-opacity">
+                        <img src={formatImageUrl(imgObj.url)} className="w-full h-full object-cover" />
                       </div>
                     ))}
                   </div>
@@ -1504,7 +1586,7 @@
       }, [entries]);
 
       return (
-        <div className="space-y-6 animate-fade-in">
+        <div className="space-y-6 animate-fade-in mt-4">
           <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
             <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-users text-blue-500 mr-2"></i> よく会う人 ランキング</h3>
             {allPeople.length > 0 ? (
@@ -1519,25 +1601,11 @@
                   else if (index === 2) badgeClass = "bg-orange-100 text-orange-700";
 
                   let scoreDisplay = null;
-                  if (dates.length >= 2 && todayStr) {
-                    const todayDate = new Date(todayStr);
-                    const lastDate = new Date(dates[0]); 
-                    const prevLastDate = new Date(dates[1]); 
-                    
-                    const msToDays = ms => Math.floor(ms / (1000 * 60 * 60 * 24));
-                    const daysSinceLast = msToDays(todayDate - lastDate); 
-                    const daysBetween = msToDays(lastDate - prevLastDate); 
-                    
-                    const score = daysBetween - daysSinceLast;
-                    
-                    const scoreColor = score < 0 ? 'text-red-500 bg-red-50 border-red-100' : 'text-blue-500 bg-blue-50 border-blue-100';
-                    const sign = score > 0 ? '+' : '';
-                    
+                  if (dates.length > 0) {
+                    const lastDate = dates[0].replace(/-/g, '/');
                     scoreDisplay = (
-                      <div className="flex flex-col items-end mr-3" title={`前回から${daysSinceLast}日経過 (本来のペースより${Math.abs(score)}日${score < 0 ? '遅れ' : '早い'})`}>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${scoreColor}`}>
-                          <i className="fas fa-stopwatch mr-1 opacity-70"></i>{sign}{score}
-                        </span>
+                      <div className="flex flex-col items-end mr-3">
+                        <span className="text-xs text-gray-500 font-medium">{lastDate}</span>
                       </div>
                     );
                   }
