@@ -1729,8 +1729,8 @@
       
       const personProfile = isPerson ? (peopleProfiles[name] || {}) : null;
       const xUsername = personProfile?.xUsername;
+      const birthday = personProfile?.birthday;
       
-      // ★ 変更点: 人物の場合は peopleProfiles のメモを参照し、トピックの場合は topicsWiki のメモを参照する
       const personMemo = personProfile?.memo || '';
       const topicMemo = topicsWiki[name]?.memo || '';
       const wikiMemo = isPerson ? personMemo : topicMemo;
@@ -1738,29 +1738,30 @@
       const [wikiText, setWikiText] = useState(wikiMemo);
       const [isSavingWiki, setIsSavingWiki] = useState(false);
       
-      const [editX, setEditX] = useState(false);
+      const [editProfile, setEditProfile] = useState(false);
       const [xInput, setXInput] = useState(xUsername || '');
-      const [isSavingX, setIsSavingX] = useState(false);
+      const [birthdayInput, setBirthdayInput] = useState(birthday || '');
+      const [isSavingProfile, setIsSavingProfile] = useState(false);
 
       useEffect(() => {
         setXInput(xUsername || '');
-      }, [xUsername]);
+        setBirthdayInput(birthday || '');
+      }, [xUsername, birthday]);
 
       useEffect(() => {
         setWikiText(wikiMemo);
       }, [wikiMemo]);
 
-      const handleSaveX = async () => {
-        setIsSavingX(true);
+      const handleSaveProfile = async () => {
+        setIsSavingProfile(true);
         const username = extractXUsername(xInput);
-        await updatePersonProfile(name, { xUsername: username || null });
-        setIsSavingX(false);
-        setEditX(false);
+        await updatePersonProfile(name, { xUsername: username || null, birthday: birthdayInput });
+        setIsSavingProfile(false);
+        setEditProfile(false);
       };
 
       const handleSaveWiki = async () => {
         setIsSavingWiki(true);
-        // ★ 変更点: 人物の場合は updatePersonProfile、トピックの場合は updateTopicWiki を呼び出す
         if (isPerson) {
           await updatePersonProfile(name, { memo: wikiText });
         } else {
@@ -1825,22 +1826,46 @@
                   <h2 className="text-2xl font-bold leading-tight break-words">{name}</h2>
                   
                   {isPerson && (
-                    <div className="mt-2">
-                      {editX ? (
-                        <div className="flex gap-1 items-center bg-white/10 p-1 rounded-lg backdrop-blur-md">
-                          <input type="text" value={xInput} onChange={e=>setXInput(e.target.value)} placeholder="XのURL or @ID" className="text-gray-800 text-xs p-1.5 rounded-md flex-1 outline-none border-none" disabled={isSavingX}/>
-                          <button onClick={handleSaveX} disabled={isSavingX} className={`bg-white text-orange-500 px-3 py-1.5 rounded-md text-xs font-bold active:scale-95 ${isSavingX ? 'opacity-50' : ''}`}>{isSavingX ? '保存中...' : '保存'}</button>
+                    <div className="mt-3">
+                      {editProfile ? (
+                        <div className="flex flex-col gap-2 bg-white/10 p-3 rounded-xl backdrop-blur-md">
+                          <div className="flex gap-2 items-center">
+                             <i className="fab fa-twitter text-white/70 w-4 text-center"></i>
+                             <input type="text" value={xInput} onChange={e=>setXInput(e.target.value)} placeholder="XのURL or @ID" className="text-gray-800 text-xs p-1.5 rounded-md flex-1 outline-none border-none" disabled={isSavingProfile}/>
+                          </div>
+                          <div className="flex gap-2 items-center">
+                             <i className="fas fa-birthday-cake text-white/70 w-4 text-center"></i>
+                             <input type="text" value={birthdayInput} onChange={e=>setBirthdayInput(e.target.value)} placeholder="誕生日 (例: 1990/01/01 または 01/01)" className="text-gray-800 text-xs p-1.5 rounded-md flex-1 outline-none border-none" disabled={isSavingProfile}/>
+                          </div>
+                          <div className="flex justify-end mt-1 gap-2">
+                             <button onClick={() => setEditProfile(false)} disabled={isSavingProfile} className="text-white/80 hover:text-white px-2 py-1 rounded-md text-xs font-bold active:scale-95 transition-colors">キャンセル</button>
+                             <button onClick={handleSaveProfile} disabled={isSavingProfile} className={`bg-white text-orange-500 px-4 py-1.5 rounded-md text-xs font-bold shadow-sm active:scale-95 ${isSavingProfile ? 'opacity-50' : ''}`}>{isSavingProfile ? '保存中...' : '保存'}</button>
+                          </div>
                         </div>
                       ) : (
-                        xUsername ? (
-                          <div className="inline-flex items-center gap-1.5 text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded-lg cursor-pointer backdrop-blur-sm transition-colors border border-white/20" onClick={()=>setEditX(true)}>
-                            <i className="fab fa-twitter"></i> @{xUsername} <i className="fas fa-pen ml-1 text-[10px] opacity-70"></i>
+                        <div className="flex flex-col gap-2 items-start">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {xUsername && (
+                              <a href={`https://x.com/${xUsername}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded-lg cursor-pointer backdrop-blur-sm transition-colors border border-white/20">
+                                <i className="fab fa-twitter"></i> @{xUsername}
+                              </a>
+                            )}
+                            {birthday && (
+                              <div className="inline-flex items-center gap-1.5 text-xs bg-white/20 px-2 py-1 rounded-lg backdrop-blur-sm border border-white/20">
+                                <i className="fas fa-birthday-cake"></i> {birthday}
+                              </div>
+                            )}
+                            {(xUsername || birthday) ? (
+                              <button onClick={()=>setEditProfile(true)} className="text-xs bg-white/20 hover:bg-white/30 w-7 h-7 flex items-center justify-center rounded-full backdrop-blur-sm transition-colors border border-white/20">
+                                <i className="fas fa-pen text-[10px]"></i>
+                              </button>
+                            ) : (
+                              <button onClick={()=>setEditProfile(true)} className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full backdrop-blur-sm transition-colors border border-white/20">
+                                <i className="fas fa-pen mr-1"></i> プロフィールを編集
+                              </button>
+                            )}
                           </div>
-                        ) : (
-                          <button onClick={()=>setEditX(true)} className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full backdrop-blur-sm transition-colors border border-white/20">
-                            <i className="fab fa-twitter mr-1"></i> Xアカウントを紐付け
-                          </button>
-                        )
+                        </div>
                       )}
                     </div>
                   )}
