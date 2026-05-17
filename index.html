@@ -50,11 +50,6 @@
       return { __html: html };
     };
 
-    const getDisplayWhat = (rawWhat) => {
-      if (!rawWhat) return '';
-      return rawWhat.split('<!--RAW-->')[0].trim();
-    };
-
     const useSwipe = (onSwipeLeft, onSwipeRight) => {
       const touchStartX = useRef(null);
       const touchStartY = useRef(null);
@@ -98,34 +93,6 @@
       return url;
     };
 
-    const compressImage = (file) => {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const img = new Image();
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const MAX_WIDTH = 600; 
-            const MAX_HEIGHT = 600;
-            let width = img.width;
-            let height = img.height;
-
-            if (width > height) {
-              if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
-            } else {
-              if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
-            }
-            canvas.width = width; canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', 0.6));
-          };
-          img.src = e.target.result;
-        };
-        reader.readAsDataURL(file);
-      });
-    };
-
     const splitTags = (str) => {
       if (!str) return [];
       return str.split(/[,、]+/).map(s => s.trim()).filter(Boolean);
@@ -160,6 +127,37 @@
       return str;
     };
 
+    const compressImage = (file) => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 600; 
+            const MAX_HEIGHT = 600;
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+              if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+            } else {
+              if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
+            }
+            canvas.width = width; canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.6));
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    };
+
+    // ==========================================
+    // 共通コンポーネント
+    // ==========================================
     function TagList({ places, people, topics, onOpenProfile, peopleProfiles = {} }) {
       if (!places?.length && !people?.length && !topics?.length) return null;
       return (
@@ -222,6 +220,44 @@
       );
     }
 
+    // 各タブで共通使用する日記カード内容コンポーネント
+    function EntryCardContent({ entry, isPerson = false, isTopic = false, name = '', onOpenProfile, peopleProfiles }) {
+      const tweetUrls = extractTweetUrls(entry.twitterUrl || '');
+      
+      return (
+        <>
+          {entry.images && entry.images.length > 0 && (
+            <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-100 mb-4">
+              {entry.images.map((img, i) => (
+                <div key={`img-${i}`} className="w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
+                  <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {entry.topic1 && <h4 className="font-bold text-sm text-purple-600 mt-1 mb-1">【{entry.topic1}】</h4>}
+          {entry.what1 && <p className="text-gray-800 whitespace-pre-wrap break-words text-[15px] leading-relaxed mb-3">{entry.what1}</p>}
+          
+          {entry.topic2 && <h4 className="font-bold text-sm text-purple-600 mt-1 mb-1">【{entry.topic2}】</h4>}
+          {entry.what2 && <p className="text-gray-800 whitespace-pre-wrap break-words text-[15px] leading-relaxed mb-3">{entry.what2}</p>}
+
+          {tweetUrls.length > 0 && (
+            <div className="flex flex-col gap-2 mb-4">
+              {tweetUrls.map((url, i) => <TweetEmbed key={`tweet-${i}`} url={url} />)}
+            </div>
+          )}
+
+          <TagList 
+            places={splitTags(entry.where).filter(p => !(!isPerson && !isTopic && p === name))} 
+            people={splitTags(entry.withWhom).filter(p => !(isPerson && p === name))} 
+            topics={[...splitTags(entry.topic1), ...splitTags(entry.topic2)].filter(p => !(isTopic && p === name))}
+            onOpenProfile={onOpenProfile} 
+            peopleProfiles={peopleProfiles}
+          />
+        </>
+      );
+    }
 
     function App() {
       const [activeTab, setActiveTab] = useState('home');
@@ -233,14 +269,14 @@
       const [selectedProfile, setSelectedProfile] = useState(null); 
       const [peopleProfiles, setPeopleProfiles] = useState({});
       const [topicsWiki, setTopicsWiki] = useState({}); 
-
+      
       const mainRef = useRef(null); 
       
       const tabClickCountRef = useRef(0);
       const tabClickTimeoutRef = useRef(null);
-      const scrollPositions = useRef({ home: 0, calendar: 0, search: 0, insights: 0 });
+      const scrollPositions = useRef({ home: 0, calendar: 0, search: 0, insights: 0, chat: 0 });
       
-      const [tabResetKeys, setTabResetKeys] = useState({ calendar: 0, insights: 0 });
+      const [tabResetKeys, setTabResetKeys] = useState({ calendar: 0, insights: 0, chat: 0 });
 
       const todayStr = useMemo(() => {
         const today = new Date();
@@ -296,7 +332,7 @@
             await fetch(GAS_WEB_APP_URL, {
               method: 'POST',
               headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
-              body: JSON.stringify({ type: 'profile', name: name, ...data }),
+              body: JSON.stringify({ type: 'profile', name: name, xUsername: data.xUsername, memo: data.memo }),
             });
           } catch (error) {}
         }
@@ -327,23 +363,6 @@
           return newEntries;
         });
 
-        const people = splitTags(entry.withWhom);
-        people.forEach(person => {
-          setPeopleProfiles(prev => {
-            if (!prev[person]) {
-              if (GAS_WEB_APP_URL) {
-                fetch(GAS_WEB_APP_URL, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                  body: JSON.stringify({ type: 'profile', name: person })
-                }).catch(() => {});
-              }
-              return { ...prev, [person]: {} };
-            }
-            return prev;
-          });
-        });
-
         if (GAS_WEB_APP_URL) {
           try {
             const response = await fetch(GAS_WEB_APP_URL, {
@@ -353,12 +372,20 @@
             });
             const resData = await response.json();
             if (resData.status === "error") return { error: resData.message };
+            
+            // ★自動でフロントエンド側のトピック Wiki リストにも追加
+            if (entry.topic1 && !topicsWiki[entry.topic1]) {
+              setTopicsWiki(prev => ({ ...prev, [entry.topic1]: { memo: "" } }));
+            }
+            if (entry.topic2 && !topicsWiki[entry.topic2]) {
+              setTopicsWiki(prev => ({ ...prev, [entry.topic2]: { memo: "" } }));
+            }
           } catch (error) {
             return { error: "ネットワーク通信に失敗しました" };
           }
         }
         return { success: true };
-      }, []);
+      }, [topicsWiki]);
 
       const handleTabClick = (targetTab) => {
         if (activeTab !== targetTab) {
@@ -385,7 +412,9 @@
             setSearchFilterTag(null);
           } else if (targetTab === 'insights') {
             setTabResetKeys(prev => ({ ...prev, insights: prev.insights + 1 })); 
-          } 
+          } else if (targetTab === 'chat') {
+            setTabResetKeys(prev => ({ ...prev, chat: prev.chat + 1 })); 
+          }
         } else if (tabClickCountRef.current === 3) {
           if (mainRef.current) {
             mainRef.current.scrollTo({ top: 0, behavior: 'smooth' });
@@ -415,7 +444,7 @@
                 isGasLinked={!!GAS_WEB_APP_URL} 
                 onOpenProfile={setSelectedProfile}
                 peopleProfiles={peopleProfiles}
-                availableTopics={Object.keys(topicsWiki)}
+                topicsWiki={topicsWiki} // ★トピックWiki候補を渡す
               />
             )}
             {activeTab === 'calendar' && (
@@ -442,6 +471,7 @@
                 setQuery={setSearchQuery}
                 filterTag={searchFilterTag}
                 setFilterTag={setSearchFilterTag}
+                topicsWiki={topicsWiki} // ★トピック候補を渡す
               />
             )}
             {activeTab === 'insights' && (
@@ -452,6 +482,9 @@
                 resetKey={tabResetKeys.insights}
                 todayStr={todayStr}
               />
+            )}
+            {activeTab === 'chat' && (
+              <ChatTab resetKey={tabResetKeys.chat} />
             )}
           </main>
 
@@ -472,6 +505,10 @@
               <i className="fas fa-chart-pie text-xl"></i>
               <span className="text-[10px] font-medium">振り返り</span>
             </button>
+            <button onClick={() => handleTabClick('chat')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'chat' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
+              <i className="fas fa-robot text-xl"></i>
+              <span className="text-[10px] font-medium">AIチャット</span>
+            </button>
           </nav>
 
           {selectedProfile && (
@@ -491,7 +528,10 @@
       );
     }
 
-    function HomeTab({ viewingDateStr, setViewingDateStr, todayStr, entries, onSave, isGasLinked, onOpenProfile, peopleProfiles, availableTopics = [] }) {
+    // ==========================================
+    // 入力タブ
+    // ==========================================
+    function HomeTab({ viewingDateStr, setViewingDateStr, todayStr, entries, onSave, isGasLinked, onOpenProfile, peopleProfiles, topicsWiki }) {
       const [where, setWhere] = useState('');
       const [withWhom, setWithWhom] = useState('');
       const [images, setImages] = useState([]);
@@ -508,9 +548,6 @@
       const [slideEffect, setSlideEffect] = useState('animate-fade-in');
       const [lastLoadedDate, setLastLoadedDate] = useState(null);
 
-      const displayTopics1 = Array.from(new Set([...availableTopics, topic1].filter(Boolean)));
-      const displayTopics2 = Array.from(new Set([...availableTopics, topic2].filter(Boolean)));
-
       useEffect(() => {
         const entry = entries.find(e => e.when === viewingDateStr);
         if (viewingDateStr !== lastLoadedDate || (entry && lastLoadedDate === null)) {
@@ -518,37 +555,11 @@
             setWhere(entry.where || '');
             setWithWhom(entry.withWhom || '');
             setImages(entry.images || []);
-            
-            if (entry.topic1 !== undefined) {
-              setTopic1(entry.topic1 || '');
-              setTopic2(entry.topic2 || '');
-              setWhat1(entry.what1 || '');
-              setWhat2(entry.what2 || '');
-              setTwitterUrl(entry.twitterUrl || '');
-            } else {
-              const topics = splitTags(entry.topic);
-              setTopic1(topics[0] || '');
-              setTopic2(topics[1] || '');
-
-              const parts = (entry.what || '').split('<!--RAW-->');
-              if (parts.length > 1) {
-                try {
-                  const raw = JSON.parse(parts[1]);
-                  setWhat1(raw.what1 || '');
-                  setWhat2(raw.what2 || '');
-                  setTwitterUrl(raw.twitterUrl || '');
-                } catch (e) {
-                  setWhat1(parts[0]);
-                  setWhat2('');
-                  setTwitterUrl('');
-                }
-              } else {
-                setWhat1(entry.what || '');
-                setWhat2('');
-                const urls = extractTweetUrls(entry.what);
-                setTwitterUrl(urls.length > 0 ? urls[0] : '');
-              }
-            }
+            setTopic1(entry.topic1 || '');
+            setWhat1(entry.what1 || '');
+            setTopic2(entry.topic2 || '');
+            setWhat2(entry.what2 || '');
+            setTwitterUrl(entry.twitterUrl || '');
           } else {
             setWhere(''); setWithWhom(''); setImages([]);
             setTopic1(''); setTopic2(''); setWhat1(''); setWhat2(''); setTwitterUrl('');
@@ -557,70 +568,34 @@
         }
       }, [viewingDateStr, entries, lastLoadedDate]);
 
-      const buildWhatToSave = () => {
-        const displayParts = [];
-        if (topic1 || what1) displayParts.push(topic1 ? `【${topic1}】\n${what1}` : what1);
-        if (topic2 || what2) displayParts.push(topic2 ? `【${topic2}】\n${what2}` : what2);
-        
-        let displayText = displayParts.join('\n\n');
-        if (twitterUrl) displayText += (displayText ? '\n\n' : '') + twitterUrl;
-        
-        const rawJson = JSON.stringify({ what1, what2, twitterUrl });
-        return `${displayText}<!--RAW-->${rawJson}`;
-      };
-
-      const buildTopicToSave = () => {
-        return [topic1, topic2].map(t => t.trim()).filter(Boolean).join(',');
-      };
-
-      const buildPayload = () => {
-        return {
-          when: viewingDateStr, 
-          where, 
-          withWhom, 
-          images,
-          topic1,
-          what1,
-          topic2,
-          what2,
-          twitterUrl,
-          what: buildWhatToSave(), 
-          topic: buildTopicToSave()
-        };
-      };
-
       const forceSave = () => {
         const entry = entries.find(e => e.when === viewingDateStr);
-        const currentPayload = buildPayload();
-        
         const isChanged = 
+          (entry?.what1 || '') !== what1 ||
+          (entry?.what2 || '') !== what2 ||
           (entry?.where || '') !== where ||
           (entry?.withWhom || '') !== withWhom ||
           (entry?.topic1 || '') !== topic1 ||
-          (entry?.what1 || '') !== what1 ||
           (entry?.topic2 || '') !== topic2 ||
-          (entry?.what2 || '') !== what2 ||
           (entry?.twitterUrl || '') !== twitterUrl ||
           JSON.stringify(entry?.images || []) !== JSON.stringify(images);
 
         const hasContent = what1 || what2 || where || withWhom || topic1 || topic2 || twitterUrl || images.length > 0;
 
         if (isChanged && hasContent) {
-          onSave(currentPayload);
+          onSave({ when: viewingDateStr, what1, what2, where, withWhom, topic1, topic2, twitterUrl, images });
         }
       };
 
       useEffect(() => {
         const entry = entries.find(e => e.when === viewingDateStr);
-        const currentPayload = buildPayload();
-        
         const isChanged = 
+          (entry?.what1 || '') !== what1 ||
+          (entry?.what2 || '') !== what2 ||
           (entry?.where || '') !== where ||
           (entry?.withWhom || '') !== withWhom ||
           (entry?.topic1 || '') !== topic1 ||
-          (entry?.what1 || '') !== what1 ||
           (entry?.topic2 || '') !== topic2 ||
-          (entry?.what2 || '') !== what2 ||
           (entry?.twitterUrl || '') !== twitterUrl ||
           JSON.stringify(entry?.images || []) !== JSON.stringify(images);
 
@@ -628,7 +603,7 @@
 
         if (isChanged && hasContent) {
           const timerId = setTimeout(async () => {
-            const res = await onSave(currentPayload);
+            const res = await onSave({ when: viewingDateStr, what1, what2, where, withWhom, topic1, topic2, twitterUrl, images });
             if (res && res.error) {
               setSaveMessage('自動保存エラー: ' + res.error);
             } else {
@@ -706,7 +681,7 @@
 
       const handleSave = async () => {
         setIsSaving(true);
-        const res = await onSave(buildPayload());
+        const res = await onSave({ when: viewingDateStr, what1, what2, where, withWhom, topic1, topic2, twitterUrl, images });
         setIsSaving(false);
         
         if (res && res.error) {
@@ -734,6 +709,11 @@
 
       const [year, month, day] = viewingDateStr.split('-');
       const isToday = viewingDateStr === todayStr;
+
+      // Topicsサジェスト用マスタ展開
+      const topicOptions = useMemo(() => {
+        return Object.keys(topicsWiki || {});
+      }, [topicsWiki]);
 
       return (
         <div 
@@ -791,48 +771,25 @@
                   )}
                 </div>
 
-                <div className="mt-4">
-                  <div className="text-xs font-bold text-gray-500 mb-2 flex items-center"><i className="fas fa-layer-group text-purple-400 mr-1.5"></i>トピック1</div>
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {displayTopics1.length > 0 ? displayTopics1.map(t => (
-                      <button
-                        key={`t1-${t}`}
-                        onClick={() => setTopic1(topic1 === t ? '' : t)}
-                        disabled={isSaving}
-                        className={`px-3 py-1.5 text-xs font-bold rounded-xl border transition-all active:scale-95 ${topic1 === t ? 'bg-purple-500 text-white border-purple-500 shadow-md' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
-                      >
-                        {t}
-                      </button>
-                    )) : (
-                      <span className="text-xs text-gray-400">スプレッドシートのTopicsにトピックを追加してください</span>
-                    )}
-                  </div>
-                  <div className="relative">
-                    <textarea value={what1} onChange={(e) => setWhat1(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none resize-none text-sm bg-gray-50 placeholder-gray-400" rows="3" placeholder="トピック1に関連する内容" disabled={isSaving}/>
-                  </div>
+                {/* トピック1 (★datalist連携) */}
+                <div className="relative mt-2">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-layer-group text-purple-400 text-xs"></i></div>
+                  <input type="text" list="topics-datalist" value={topic1} onChange={(e) => setTopic1(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="トピック1 (例: 健康維持)" disabled={isSaving} />
+                </div>
+                <div className="relative">
+                  <textarea value={what1} onChange={(e) => setWhat1(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none resize-none text-[15px] bg-gray-50 placeholder-gray-400" rows="3" placeholder="トピック1に関連する内容" disabled={isSaving}/>
                 </div>
 
-                <div className="mt-4">
-                  <div className="text-xs font-bold text-gray-500 mb-2 flex items-center"><i className="fas fa-layer-group text-purple-400 mr-1.5"></i>トピック2</div>
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {displayTopics2.length > 0 ? displayTopics2.map(t => (
-                      <button
-                        key={`t2-${t}`}
-                        onClick={() => setTopic2(topic2 === t ? '' : t)}
-                        disabled={isSaving}
-                        className={`px-3 py-1.5 text-xs font-bold rounded-xl border transition-all active:scale-95 ${topic2 === t ? 'bg-purple-500 text-white border-purple-500 shadow-md' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
-                      >
-                        {t}
-                      </button>
-                    )) : (
-                      <span className="text-xs text-gray-400">スプレッドシートのTopicsにトピックを追加してください</span>
-                    )}
-                  </div>
-                  <div className="relative">
-                    <textarea value={what2} onChange={(e) => setWhat2(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none resize-none text-sm bg-gray-50 placeholder-gray-400" rows="3" placeholder="トピック2に関連する内容" disabled={isSaving}/>
-                  </div>
+                {/* トピック2 (★datalist連携) */}
+                <div className="relative mt-2">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-layer-group text-purple-400 text-xs"></i></div>
+                  <input type="text" list="topics-datalist" value={topic2} onChange={(e) => setTopic2(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="トピック2 (例: チーム既婚者)" disabled={isSaving} />
+                </div>
+                <div className="relative">
+                  <textarea value={what2} onChange={(e) => setWhat2(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none resize-none text-[15px] bg-gray-50 placeholder-gray-400" rows="3" placeholder="トピック2に関連する内容" disabled={isSaving}/>
                 </div>
 
+                {/* TwitterURL */}
                 <div className="relative mt-2">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fab fa-twitter text-blue-400 text-xs"></i></div>
                   <input type="text" value={twitterUrl} onChange={(e) => setTwitterUrl(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="Twitter URL (自動でツイートが表示されます)" disabled={isSaving} />
@@ -868,8 +825,6 @@
                       const entryYear = entry.when.split('-')[0];
                       const currentYear = new Date(todayStr).getFullYear();
                       const diffYear = currentYear - parseInt(entryYear);
-                      const displayWhat = getDisplayWhat(entry.what);
-                      const tweetUrls = extractTweetUrls(displayWhat);
 
                       return (
                         <div key={idx} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
@@ -877,33 +832,9 @@
                             <div className="text-lg font-bold text-blue-600">
                               {entryYear}年 <span className="text-sm font-bold text-blue-600 ml-0.5">({getDayOfWeek(entry.when)})</span> <span className="text-sm text-gray-500 font-normal ml-1">({diffYear}年前)</span>
                             </div>
-                            <button onClick={(e) => { 
-                              setViewingDateStr(entry.when); 
-                              e.target.closest('main')?.scrollTo({ top: 0, behavior: 'smooth' }); 
-                            }} className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors active:scale-95">
-                              <i className="fas fa-pen mr-1"></i>編集
-                            </button>
                           </div>
                           
-                          {entry.images && entry.images.length > 0 && (
-                            <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-100 mb-4">
-                              {entry.images.map((img, i) => (
-                                <div key={`past-img-${i}`} className="w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
-                                  <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          <p className="text-gray-800 whitespace-pre-wrap break-words text-[15px] leading-relaxed mb-4">{displayWhat}</p>
-                          
-                          {tweetUrls.length > 0 && (
-                            <div className="flex flex-col gap-2 mb-4">
-                              {tweetUrls.map((url, i) => <TweetEmbed key={`past-${url}-${i}`} url={url} />)}
-                            </div>
-                          )}
-
-                          <TagList places={splitTags(entry.where)} people={splitTags(entry.withWhom)} topics={splitTags(entry.topic)} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
+                          <EntryCardContent entry={entry} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
                         </div>
                       );
                     })}
@@ -912,10 +843,18 @@
               </div>
             </div>
           </div>
+
+          {/* ★トピック1・2候補用datalist */}
+          <datalist id="topics-datalist">
+            {topicOptions.map(t => <option key={t} value={t} />)}
+          </datalist>
         </div>
       );
     }
 
+    // ==========================================
+    // カレンダータブ
+    // ==========================================
     function CalendarTab({ entries, todayStr, onSelectDate, onOpenProfile, peopleProfiles, resetKey, mainRef }) {
       const currentYear = new Date(todayStr).getFullYear();
       const [years, setYears] = useState(() => Array.from({ length: 11 }, (_, i) => currentYear - 10 + i));
@@ -932,9 +871,6 @@
         if (!selectedDate) return null;
         return entries.find(e => e.when === selectedDate) || null;
       }, [selectedDate, entries]);
-
-      const displayWhat = selectedEntry ? getDisplayWhat(selectedEntry.what) : '';
-      const tweetUrls = extractTweetUrls(displayWhat);
 
       const topObserverRef = useRef(null);
       const bottomObserverRef = useRef(null);
@@ -1033,29 +969,7 @@
                 </div>
                 <div className="p-6 overflow-y-auto overflow-x-hidden">
                   {selectedEntry ? (
-                    <>
-                      {selectedEntry.images && selectedEntry.images.length > 0 && (
-                        <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-100 mb-4">
-                          {selectedEntry.images.map((img, i) => (
-                            <div key={`modal-img-${i}`} className="w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
-                              <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      <p className="text-gray-800 whitespace-pre-wrap text-[15px] leading-relaxed mb-4">{displayWhat}</p>
-
-                      {tweetUrls.length > 0 && (
-                        <div className="flex flex-col gap-2 mb-4">
-                          {tweetUrls.map((url, i) => <TweetEmbed key={`modal-${url}-${i}`} url={url} />)}
-                        </div>
-                      )}
-
-                      <div className="mb-4">
-                        <TagList places={splitTags(selectedEntry.where)} people={splitTags(selectedEntry.withWhom)} topics={splitTags(selectedEntry.topic)} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
-                      </div>
-                    </>
+                    <EntryCardContent entry={selectedEntry} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
                   ) : <div className="text-center py-6 text-gray-400 text-sm">この日の日記はありません。</div>}
                   <button onClick={() => { onSelectDate(selectedDate); setSelectedDate(null); }} className="w-full mt-4 bg-blue-50 text-blue-600 font-bold py-3 rounded-2xl hover:bg-blue-100 flex justify-center items-center active:scale-95 transition-transform">
                     <i className="fas fa-pen-to-square mr-2"></i> この日を編集する
@@ -1105,7 +1019,10 @@
       );
     }
 
-    function SearchTab({ entries, onOpenProfile, onSelectDate, peopleProfiles, query, setQuery, filterTag, setFilterTag }) {
+    // ==========================================
+    // 検索タブ
+    // ==========================================
+    function SearchTab({ entries, onOpenProfile, onSelectDate, peopleProfiles, query, setQuery, filterTag, setFilterTag, topicsWiki }) {
       const popularPeople = useMemo(() => {
         const map = {};
         entries.forEach(e => splitTags(e.withWhom).forEach(p => map[p] = (map[p] || 0) + 1));
@@ -1118,18 +1035,29 @@
         return Object.keys(map).sort((a, b) => a.localeCompare(b, 'ja'));
       }, [entries]);
 
+      // ★Topicsシートにあるマスタテーマ全ても初期表示に含むように改善 (④の実行)
       const popularTopics = useMemo(() => {
         const map = {};
-        entries.forEach(e => splitTags(e.topic).forEach(p => map[p] = (map[p] || 0) + 1));
-        return Object.keys(map).sort((a, b) => a.localeCompare(b, 'ja'));
-      }, [entries]);
+        // 1. スプシに登録済みのトピックWikiを初期登録
+        Object.keys(topicsWiki || {}).forEach(t => map[t] = 0);
+        // 2. 実際に日記で使われている回数を加算
+        entries.forEach(e => {
+          if (e.topic1) map[e.topic1] = (map[e.topic1] || 0) + 1;
+          if (e.topic2) map[e.topic2] = (map[e.topic2] || 0) + 1;
+        });
+        // 3. 回数の降順、同数は五十音順でソート
+        return Object.keys(map).sort((a, b) => {
+          const countDiff = map[b] - map[a];
+          return countDiff !== 0 ? countDiff : a.localeCompare(b, 'ja');
+        });
+      }, [entries, topicsWiki]);
 
       const filteredEntries = useMemo(() => {
         if (filterTag) {
           return entries.filter(e => {
             if (filterTag.type === 'person') return splitTags(e.withWhom).includes(filterTag.value);
             if (filterTag.type === 'place') return splitTags(e.where).includes(filterTag.value);
-            if (filterTag.type === 'topic') return splitTags(e.topic).includes(filterTag.value);
+            if (filterTag.type === 'topic') return e.topic1 === filterTag.value || e.topic2 === filterTag.value;
             return false;
           }).sort((a, b) => new Date(b.when) - new Date(a.when));
         }
@@ -1137,10 +1065,12 @@
         if (!query.trim()) return [];
         const lower = query.toLowerCase();
         return entries.filter(e => 
-          getDisplayWhat(e.what).toLowerCase().includes(lower) || 
+          (e.what1 || '').toLowerCase().includes(lower) || 
+          (e.what2 || '').toLowerCase().includes(lower) || 
           (e.where || '').toLowerCase().includes(lower) || 
           (e.withWhom || '').toLowerCase().includes(lower) ||
-          (e.topic || '').toLowerCase().includes(lower)
+          (e.topic1 || '').toLowerCase().includes(lower) ||
+          (e.topic2 || '').toLowerCase().includes(lower)
         ).sort((a, b) => new Date(b.when) - new Date(a.when));
       }, [query, filterTag, entries]);
 
@@ -1169,6 +1099,7 @@
             {!query.trim() && !filterTag && (popularPeople.length > 0 || popularPlaces.length > 0 || popularTopics.length > 0) && (
               <div className="mb-8 space-y-6">
                 
+                {/* ★Topic一覧 */}
                 {popularTopics.length > 0 && (
                   <div>
                     <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center"><i className="fas fa-layer-group mr-1"></i> テーマ / コミュニティ</h3>
@@ -1225,41 +1156,17 @@
             ) : (
               <div className="space-y-6">
                 <p className="text-sm text-gray-500 mb-2">{filteredEntries.length}件見つかりました</p>
-                {filteredEntries.map((entry, idx) => {
-                  const displayWhat = getDisplayWhat(entry.what);
-                  const tweetUrls = extractTweetUrls(displayWhat);
-
-                  return (
-                    <div key={idx} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
-                      <div className="text-sm font-bold text-blue-600 mb-3 flex justify-between border-b border-gray-50 pb-2">
-                        <div className="flex items-center gap-2">
-                          <span>{entry.when && entry.when.replace(/-/g, '/')} <span className="text-xs">({getDayOfWeek(entry.when)})</span></span>
-                          <button onClick={() => onSelectDate(entry.when)} className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors active:scale-95"><i className="fas fa-pen mr-1"></i>編集</button>
-                        </div>
+                {filteredEntries.map((entry, idx) => (
+                  <div key={idx} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
+                    <div className="text-sm font-bold text-blue-600 mb-3 flex justify-between border-b border-gray-50 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span>{entry.when && entry.when.replace(/-/g, '/')} <span className="text-xs">({getDayOfWeek(entry.when)})</span></span>
+                        <button onClick={() => onSelectDate(entry.when)} className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors active:scale-95"><i className="fas fa-pen mr-1"></i>編集</button>
                       </div>
-
-                      {entry.images && entry.images.length > 0 && (
-                        <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-white p-1 rounded-2xl border border-gray-100 mb-4">
-                          {entry.images.map((img, i) => (
-                            <div key={`search-img-${i}`} className="w-full h-full bg-gray-50 rounded-xl overflow-hidden shadow-sm">
-                              <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      <p className="text-gray-800 whitespace-pre-wrap break-words text-[15px] leading-relaxed mb-4">{displayWhat}</p>
-                      
-                      {tweetUrls.length > 0 && (
-                        <div className="flex flex-col gap-2 mb-4">
-                          {tweetUrls.map((url, i) => <TweetEmbed key={`search-${url}-${i}`} url={url} />)}
-                        </div>
-                      )}
-
-                      <TagList places={splitTags(entry.where)} people={splitTags(entry.withWhom)} topics={splitTags(entry.topic)} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
                     </div>
-                  );
-                })}
+                    <EntryCardContent entry={entry} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -1267,291 +1174,107 @@
       );
     }
 
-    function InsightsTab({ entries, onOpenProfile, peopleProfiles, resetKey, todayStr }) {
-      const [viewMode, setViewMode] = useState('monthly'); 
-      
-      const { onTouchStart, onTouchEnd } = useSwipe(
-        () => setViewMode(prev => prev === 'monthly' ? 'all' : 'monthly'),
-        () => setViewMode(prev => prev === 'all' ? 'monthly' : 'all')
-      );
+    // ==========================================
+    // チャットタブ
+    // ==========================================
+    function ChatTab({ resetKey }) {
+      const initialMessage = { role: 'ai', text: 'こんにちは！あなたの日記をすべて読み込みました。思い出について何でも聞いてください。(*例：最近Aさんとどこに行ったっけ？、去年の秋は何をしてた？*)' };
+      const [messages, setMessages] = useState([initialMessage]);
+      const [input, setInput] = useState('');
+      const [loading, setLoading] = useState(false);
+      const messagesEndRef = useRef(null);
+
+      const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      };
 
       useEffect(() => {
-        if (resetKey > 0) {
-          setViewMode('monthly');
+        scrollToBottom();
+      }, [messages, loading]);
+
+      useEffect(() => {
+        if(resetKey > 0) {
+          setMessages([initialMessage]);
         }
       }, [resetKey]);
 
-      return (
-        <div className="p-4 max-w-lg mx-auto w-full animate-fade-in overflow-x-hidden bg-gray-50 min-h-screen">
-          <div 
-            className="pt-4 pb-4 sticky top-0 bg-gray-50/95 backdrop-blur-sm z-10"
-            onTouchStart={onTouchStart} 
-            onTouchEnd={onTouchEnd}
-          >
-            <div className="flex bg-gray-200 p-1 rounded-xl">
-              <button 
-                onClick={() => setViewMode('monthly')} 
-                className={`flex-1 py-2 text-[11px] sm:text-xs font-bold rounded-lg transition-all ${viewMode === 'monthly' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                月間ハイライト
-              </button>
-              <button 
-                onClick={() => setViewMode('all')} 
-                className={`flex-1 py-2 text-[11px] sm:text-xs font-bold rounded-lg transition-all ${viewMode === 'all' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                全期間
-              </button>
-            </div>
-          </div>
+      const handleSend = async () => {
+        if (!input.trim() || loading) return;
+        const userText = input.trim();
+        setInput('');
+        setMessages(prev => [...prev, { role: 'user', text: userText }]);
+        setLoading(true);
 
-          <div className="mt-4">
-            {viewMode === 'monthly' ? (
-              <MonthlyInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} resetKey={resetKey} />
-            ) : (
-              <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-                <AllTimeInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} todayStr={todayStr} />
+        try {
+          const response = await fetch(GAS_WEB_APP_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ type: 'ai_chat', query: userText }),
+          });
+          const data = await response.json();
+          if (data.status === 'success') {
+            setMessages(prev => [...prev, { role: 'ai', text: data.text }]);
+          } else {
+            setMessages(prev => [...prev, { role: 'ai', text: 'エラーが発生しました: ' + data.message }]);
+          }
+        } catch(e) {
+          setMessages(prev => [...prev, { role: 'ai', text: '通信エラーが発生しました。' }]);
+        }
+        setLoading(false);
+      };
+
+      return (
+        <div className="flex flex-col h-full bg-gray-50 w-full relative animate-fade-in">
+          <div className="sticky top-0 bg-white/95 backdrop-blur-md z-10 px-4 py-4 border-b border-gray-100 flex items-center justify-center shadow-sm">
+            <h2 className="font-bold text-gray-800 tracking-tight"><i className="fas fa-robot text-blue-500 mr-2"></i>思い出AIチャット</h2>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-4 space-y-5 pb-[90px] w-full">
+            {messages.map((msg, i) => (
+              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                {msg.role === 'ai' && <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-500 flex items-center justify-center mr-2 shrink-0"><i className="fas fa-robot text-xs"></i></div>}
+                <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed markdown-body shadow-sm ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm'}`}>
+                   <span dangerouslySetInnerHTML={parseMarkdown(msg.text)} />
+                </div>
+              </div>
+            ))}
+            {loading && (
+              <div className="flex justify-start">
+                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-500 flex items-center justify-center mr-2 shrink-0"><i className="fas fa-robot text-xs"></i></div>
+                <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm flex items-center">
+                  <i className="fas fa-ellipsis-h fa-fade text-gray-400"></i>
+                </div>
               </div>
             )}
-          </div>
-        </div>
-      );
-    }
-
-    function MonthlyInsights({ entries, onOpenProfile, peopleProfiles, resetKey }) {
-      const [targetDate, setTargetDate] = useState(new Date());
-
-      const year = targetDate.getFullYear();
-      const month = targetDate.getMonth() + 1;
-      const monthPrefix = `${year}-${String(month).padStart(2, '0')}`;
-
-      const monthlyEntries = useMemo(() => entries.filter(e => e.when && e.when.startsWith(monthPrefix)), [entries, monthPrefix]);
-
-      const handlePrevMonth = () => {
-        const d = new Date(targetDate);
-        d.setMonth(d.getMonth() - 1);
-        setTargetDate(d);
-      };
-      const handleNextMonth = () => {
-        const d = new Date(targetDate);
-        d.setMonth(d.getMonth() + 1);
-        setTargetDate(d);
-      };
-
-      useEffect(() => {
-        if (resetKey > 0) {
-          const monthsWithEntries = [...new Set(entries.filter(e => e.when).map(e => e.when.substring(0, 7)))];
-          if (monthsWithEntries.length > 0) {
-            const randomMonthStr = monthsWithEntries[Math.floor(Math.random() * monthsWithEntries.length)];
-            const [y, m] = randomMonthStr.split('-');
-            setTargetDate(new Date(parseInt(y), parseInt(m) - 1, 1));
-          } else {
-            const d = new Date();
-            d.setMonth(d.getMonth() - Math.floor(Math.random() * 24));
-            setTargetDate(d);
-          }
-        }
-      }, [resetKey, entries]);
-
-      const { onTouchStart, onTouchEnd } = useSwipe(handleNextMonth, handlePrevMonth);
-
-      const stats = useMemo(() => {
-        const placeMap = {};
-        const peopleMap = {};
-        const monthImages = [];
-
-        monthlyEntries.forEach(e => {
-          splitTags(e.where).forEach(p => placeMap[p] = (placeMap[p] || 0) + 1);
-          splitTags(e.withWhom).forEach(p => peopleMap[p] = (peopleMap[p] || 0) + 1);
-          if (e.images) monthImages.push(...e.images);
-        });
-
-        const sortMap = (map) => Object.entries(map).sort((a, b) => b[1] - a[1]);
-
-        return {
-          totalDays: monthlyEntries.length,
-          topPlaces: sortMap(placeMap),
-          topPeople: sortMap(peopleMap),
-          images: monthImages
-        };
-      }, [monthlyEntries]);
-
-      return (
-        <div 
-          className="space-y-6 animate-fade-in"
-          onTouchStart={(e) => { e.stopPropagation(); onTouchStart(e); }}
-          onTouchEnd={(e) => { e.stopPropagation(); onTouchEnd(e); }}
-        >
-          <div className="flex items-center justify-between bg-white rounded-2xl p-2 shadow-sm border border-gray-100">
-            <button onClick={handlePrevMonth} className="w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-xl"><i className="fas fa-chevron-left"></i></button>
-            <span className="font-bold text-lg text-gray-800">{year}年 {month}月</span>
-            <button onClick={handleNextMonth} className="w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-xl"><i className="fas fa-chevron-right"></i></button>
+            <div ref={messagesEndRef} />
           </div>
 
-          {monthlyEntries.length === 0 ? (
-            <div className="text-center py-16 bg-white rounded-3xl border border-gray-100 shadow-sm">
-              <i className="fas fa-calendar-times text-4xl mb-4 text-gray-200"></i>
-              <p className="text-sm text-gray-400 font-medium">この月の記録はありません</p>
+          <div className="fixed bottom-16 left-0 w-full bg-gray-50 border-t border-gray-200 p-3 z-20" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-bottom))' }}>
+            <div className="flex items-center gap-2 bg-white rounded-full border border-gray-200 p-1 pl-4 shadow-sm max-w-lg mx-auto">
+              <input 
+                type="text" 
+                value={input} 
+                onChange={e => setInput(e.target.value)} 
+                onKeyDown={e => { if(e.key === 'Enter') { e.preventDefault(); handleSend(); } }}
+                placeholder="日記の思い出を質問する..." 
+                className="flex-1 bg-transparent outline-none text-sm"
+              />
+              <button 
+                onClick={handleSend} 
+                disabled={!input.trim() || loading}
+                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${input.trim() && !loading ? 'bg-blue-600 text-white shadow-md active:scale-95' : 'bg-gray-100 text-gray-300'}`}
+              >
+                <i className="fas fa-paper-plane text-sm"></i>
+              </button>
             </div>
-          ) : (
-            <>
-              {stats.topPeople.length > 0 && (
-                <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-                  <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-users text-orange-500 mr-2"></i>遊んだ人</h3>
-                  <div className="flex flex-wrap gap-2">
-                     {stats.topPeople.map(([name, count]) => {
-                       const xUser = peopleProfiles[name]?.xUsername;
-                       return (
-                         <button key={name} onClick={() => onOpenProfile({type: 'person', name})} className="px-3 py-1.5 bg-orange-50 text-orange-700 text-xs font-bold rounded-xl border border-orange-100 active:scale-95 shadow-sm flex items-center">
-                           {xUser ? <img src={`https://unavatar.io/twitter/${xUser}`} className="w-3.5 h-3.5 rounded-full mr-1.5 object-cover border border-orange-200" loading="lazy" onError={(e)=>{e.target.style.display='none'}} /> : null}
-                           {name} <span className="opacity-50 ml-1.5 font-medium">{count}回</span>
-                         </button>
-                       );
-                     })}
-                  </div>
-                </div>
-              )}
-
-              {stats.topPlaces.length > 0 && (
-                <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-                  <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-map-marker-alt text-green-500 mr-2"></i>行ったお店</h3>
-                  <div className="flex flex-wrap gap-2">
-                     {stats.topPlaces.map(([name, count]) => (
-                       <button key={name} onClick={() => onOpenProfile({type: 'place', name})} className="px-3 py-1.5 bg-green-50 text-green-700 text-xs font-bold rounded-xl border border-green-100 active:scale-95 shadow-sm flex items-center">
-                         {name} <span className="opacity-50 ml-1.5 font-medium">{count}回</span>
-                       </button>
-                     ))}
-                  </div>
-                </div>
-              )}
-
-              {stats.images.length > 0 && (
-                <div>
-                  <h3 className="text-gray-500 text-xs font-bold mb-3 ml-1 uppercase tracking-wider"><i className="fas fa-image mr-2"></i>今月の写真</h3>
-                  <div className="grid grid-cols-3 gap-2">
-                    {stats.images.map((img, i) => (
-                      <div key={i} className="aspect-square w-full rounded-2xl overflow-hidden border border-gray-200 shadow-sm bg-gray-50">
-                        <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      );
-    }
-
-    function AllTimeInsights({ entries, onOpenProfile, peopleProfiles, todayStr }) {
-      const { topPlaces, allPeople } = useMemo(() => {
-        const placeMap = {};
-        const peopleMap = {};
-
-        entries.forEach(e => {
-          splitTags(e.where).forEach(p => placeMap[p] = (placeMap[p] || 0) + 1);
-          splitTags(e.withWhom).forEach(p => {
-            if (!peopleMap[p]) {
-              peopleMap[p] = { count: 0, dates: [] };
-            }
-            peopleMap[p].count += 1;
-            if (e.when) peopleMap[p].dates.push(e.when);
-          });
-        });
-
-        const sortedPlaces = Object.entries(placeMap).sort((a, b) => b[1] - a[1]).slice(0, 3);
-        const sortedPeople = Object.entries(peopleMap).map(([name, data]) => ({
-          name,
-          count: data.count,
-          dates: data.dates
-        })).sort((a, b) => b.count - a.count);
-
-        return {
-          topPlaces: sortedPlaces,
-          allPeople: sortedPeople,
-        };
-      }, [entries]);
-
-      return (
-        <div className="space-y-6 animate-fade-in">
-          <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-            <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-map-marker-alt text-green-500 mr-2"></i> よく行くお店 TOP 3</h3>
-            {topPlaces.length > 0 ? (
-              <ul className="space-y-3">
-                {topPlaces.map((item, index) => (
-                  <li key={item[0]} onClick={() => onOpenProfile({type: 'place', name: item[0]})} className="flex justify-between items-center bg-gray-50 hover:bg-gray-100 active:scale-95 transition-transform p-3 rounded-2xl cursor-pointer">
-                    <div className="flex items-center">
-                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${index === 0 ? 'bg-yellow-100 text-yellow-700' : index === 1 ? 'bg-gray-200 text-gray-600' : 'bg-orange-100 text-orange-700'}`}>
-                        {index + 1}
-                      </span>
-                      <span className="font-bold text-gray-700">{item[0]}</span>
-                    </div>
-                    <span className="text-gray-500 text-sm font-bold">{item[1]}回</span>
-                  </li>
-                ))}
-              </ul>
-            ) : <p className="text-gray-400 text-sm text-center py-4">データがありません</p>}
-          </div>
-
-          <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-            <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-users text-blue-500 mr-2"></i> よく会う人 ランキング</h3>
-            {allPeople.length > 0 ? (
-              <ul className="space-y-3">
-                {allPeople.map((item, index) => {
-                  const { name, count, dates } = item;
-                  const xUser = peopleProfiles[name]?.xUsername;
-                  
-                  let badgeClass = "bg-gray-100 text-gray-500";
-                  if (index === 0) badgeClass = "bg-yellow-100 text-yellow-700";
-                  else if (index === 1) badgeClass = "bg-gray-200 text-gray-600";
-                  else if (index === 2) badgeClass = "bg-orange-100 text-orange-700";
-
-                  let scoreDisplay = null;
-                  if (dates.length >= 2 && todayStr) {
-                    const todayDate = new Date(todayStr);
-                    const lastDate = new Date(dates[0]); 
-                    const prevLastDate = new Date(dates[1]); 
-                    
-                    const msToDays = ms => Math.floor(ms / (1000 * 60 * 60 * 24));
-                    const daysSinceLast = msToDays(todayDate - lastDate); 
-                    const daysBetween = msToDays(lastDate - prevLastDate); 
-                    
-                    const score = daysBetween - daysSinceLast;
-                    
-                    const scoreColor = score < 0 ? 'text-red-500 bg-red-50 border-red-100' : 'text-blue-500 bg-blue-50 border-blue-100';
-                    const sign = score > 0 ? '+' : '';
-                    
-                    scoreDisplay = (
-                      <div className="flex flex-col items-end mr-3" title={`前回から${daysSinceLast}日経過 (本来のペースより${Math.abs(score)}日${score < 0 ? '遅れ' : '早い'})`}>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${scoreColor}`}>
-                          <i className="fas fa-stopwatch mr-1 opacity-70"></i>{sign}{score}
-                        </span>
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <li key={name} onClick={() => onOpenProfile({type: 'person', name: name})} className="flex justify-between items-center bg-gray-50 hover:bg-gray-100 active:scale-95 transition-transform p-3 rounded-2xl cursor-pointer">
-                      <div className="flex items-center shrink min-w-0">
-                        <span className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${badgeClass}`}>
-                          {index + 1}
-                        </span>
-                        {xUser ? <img src={`https://unavatar.io/twitter/${xUser}`} className="shrink-0 w-6 h-6 rounded-full mr-2 object-cover border border-orange-200" loading="lazy" onError={(e)=>{e.target.style.display='none'}} /> : null}
-                        <span className="font-bold text-gray-700 truncate">{name}</span>
-                      </div>
-                      <div className="flex items-center shrink-0 ml-2">
-                        {scoreDisplay}
-                        <span className="text-gray-500 text-sm font-bold min-w-[2.5rem] text-right">{count}回</span>
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
-            ) : <p className="text-gray-400 text-sm text-center py-4">データがありません</p>}
           </div>
         </div>
       );
     }
 
+    // ==========================================
+    // モーダル (Wiki機能を実装)
+    // ==========================================
     function ProfileModal({ profile, entries, onClose, onOpenProfile, onSelectDate, peopleProfiles, updatePersonProfile, topicsWiki, updateTopicWiki }) {
       if (!profile) return null;
       const { type, name } = profile;
@@ -1561,35 +1284,29 @@
       
       const personProfile = isPerson ? (peopleProfiles[name] || {}) : null;
       const xUsername = personProfile?.xUsername;
-      const birthday = personProfile?.birthday;
       
-      const personMemo = personProfile?.memo || '';
-      const topicMemo = topicsWiki[name]?.memo || '';
-      const wikiMemo = isPerson ? personMemo : topicMemo;
-      
+      const wikiMemo = isPerson ? (peopleProfiles[name]?.memo || '') : (topicsWiki[name]?.memo || '');
       const [wikiText, setWikiText] = useState(wikiMemo);
       const [isSavingWiki, setIsSavingWiki] = useState(false);
       
-      const [editProfile, setEditProfile] = useState(false);
+      const [editX, setEditX] = useState(false);
       const [xInput, setXInput] = useState(xUsername || '');
-      const [birthdayInput, setBirthdayInput] = useState(birthday || '');
-      const [isSavingProfile, setIsSavingProfile] = useState(false);
+      const [isSavingX, setIsSavingX] = useState(false);
 
       useEffect(() => {
         setXInput(xUsername || '');
-        setBirthdayInput(birthday || '');
-      }, [xUsername, birthday]);
+      }, [xUsername]);
 
       useEffect(() => {
         setWikiText(wikiMemo);
       }, [wikiMemo]);
 
-      const handleSaveProfile = async () => {
-        setIsSavingProfile(true);
+      const handleSaveX = async () => {
+        setIsSavingX(true);
         const username = extractXUsername(xInput);
-        await updatePersonProfile(name, { xUsername: username || null, birthday: birthdayInput });
-        setIsSavingProfile(false);
-        setEditProfile(false);
+        await updatePersonProfile(name, { xUsername: username || null });
+        setIsSavingX(false);
+        setEditX(false);
       };
 
       const handleSaveWiki = async () => {
@@ -1611,7 +1328,7 @@
         return entries.filter(e => {
           if (type === 'person') return splitTags(e.withWhom).includes(name);
           if (type === 'place') return splitTags(e.where).includes(name);
-          if (type === 'topic') return splitTags(e.topic).includes(name);
+          if (type === 'topic') return e.topic1 === name || e.topic2 === name;
           return false;
         }).sort((a, b) => new Date(b.when) - new Date(a.when));
       }, [entries, type, name]);
@@ -1658,46 +1375,22 @@
                   <h2 className="text-2xl font-bold leading-tight break-words">{name}</h2>
                   
                   {isPerson && (
-                    <div className="mt-3">
-                      {editProfile ? (
-                        <div className="flex flex-col gap-2 bg-white/10 p-3 rounded-xl backdrop-blur-md">
-                          <div className="flex gap-2 items-center">
-                             <i className="fab fa-twitter text-white/70 w-4 text-center"></i>
-                             <input type="text" value={xInput} onChange={e=>setXInput(e.target.value)} placeholder="XのURL or @ID" className="text-gray-800 text-xs p-1.5 rounded-md flex-1 outline-none border-none" disabled={isSavingProfile}/>
-                          </div>
-                          <div className="flex gap-2 items-center">
-                             <i className="fas fa-birthday-cake text-white/70 w-4 text-center"></i>
-                             <input type="text" value={birthdayInput} onChange={e=>setBirthdayInput(e.target.value)} placeholder="誕生日 (例: 1990/01/01 または 01/01)" className="text-gray-800 text-xs p-1.5 rounded-md flex-1 outline-none border-none" disabled={isSavingProfile}/>
-                          </div>
-                          <div className="flex justify-end mt-1 gap-2">
-                             <button onClick={() => setEditProfile(false)} disabled={isSavingProfile} className="text-white/80 hover:text-white px-2 py-1 rounded-md text-xs font-bold active:scale-95 transition-colors">キャンセル</button>
-                             <button onClick={handleSaveProfile} disabled={isSavingProfile} className={`bg-white text-orange-500 px-4 py-1.5 rounded-md text-xs font-bold shadow-sm active:scale-95 ${isSavingProfile ? 'opacity-50' : ''}`}>{isSavingProfile ? '保存中...' : '保存'}</button>
-                          </div>
+                    <div className="mt-2">
+                      {editX ? (
+                        <div className="flex gap-1 items-center bg-white/10 p-1 rounded-lg backdrop-blur-md">
+                          <input type="text" value={xInput} onChange={e=>setXInput(e.target.value)} placeholder="XのURL or @ID" className="text-gray-800 text-xs p-1.5 rounded-md flex-1 outline-none border-none" disabled={isSavingX}/>
+                          <button onClick={handleSaveX} disabled={isSavingX} className={`bg-white text-orange-500 px-3 py-1.5 rounded-md text-xs font-bold active:scale-95 ${isSavingX ? 'opacity-50' : ''}`}>{isSavingX ? '保存中...' : '保存'}</button>
                         </div>
                       ) : (
-                        <div className="flex flex-col gap-2 items-start">
-                          <div className="flex flex-wrap items-center gap-2">
-                            {xUsername && (
-                              <a href={`https://x.com/${xUsername}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded-lg cursor-pointer backdrop-blur-sm transition-colors border border-white/20">
-                                <i className="fab fa-twitter"></i> @{xUsername}
-                              </a>
-                            )}
-                            {birthday && (
-                              <div className="inline-flex items-center gap-1.5 text-xs bg-white/20 px-2 py-1 rounded-lg backdrop-blur-sm border border-white/20">
-                                <i className="fas fa-birthday-cake"></i> {birthday}
-                              </div>
-                            )}
-                            {(xUsername || birthday) ? (
-                              <button onClick={()=>setEditProfile(true)} className="text-xs bg-white/20 hover:bg-white/30 w-7 h-7 flex items-center justify-center rounded-full backdrop-blur-sm transition-colors border border-white/20">
-                                <i className="fas fa-pen text-[10px]"></i>
-                              </button>
-                            ) : (
-                              <button onClick={()=>setEditProfile(true)} className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full backdrop-blur-sm transition-colors border border-white/20">
-                                <i className="fas fa-pen mr-1"></i> プロフィールを編集
-                              </button>
-                            )}
+                        xUsername ? (
+                          <div className="inline-flex items-center gap-1.5 text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded-lg cursor-pointer backdrop-blur-sm transition-colors border border-white/20" onClick={()=>setEditX(true)}>
+                            <i className="fab fa-twitter"></i> @{xUsername} <i className="fas fa-pen ml-1 text-[10px] opacity-70"></i>
                           </div>
-                        </div>
+                        ) : (
+                          <button onClick={()=>setEditX(true)} className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full backdrop-blur-sm transition-colors border border-white/20">
+                            <i className="fab fa-twitter mr-1"></i> Xアカウントを紐付け
+                          </button>
+                        )
                       )}
                     </div>
                   )}
@@ -1773,25 +1466,7 @@
                             </div>
                           </div>
 
-                          {entry.images && entry.images.length > 0 && (
-                            <div className="flex gap-1 w-full mb-3">
-                              {entry.images.slice(0, 4).map((img, i) => (
-                                <div key={`modal-img-${idx}-${i}`} className="flex-1 aspect-square rounded-xl overflow-hidden bg-gray-50 border border-gray-100 shadow-sm">
-                                  <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          <p className="text-gray-800 whitespace-pre-wrap break-words text-[15px] leading-relaxed mb-4">{getDisplayWhat(entry.what)}</p>
-                          
-                          <TagList 
-                            places={splitTags(entry.where).filter(p => !(!isPerson && !isTopic && p === name))} 
-                            people={splitTags(entry.withWhom).filter(p => !(isPerson && p === name))} 
-                            topics={splitTags(entry.topic).filter(p => !(isTopic && p === name))}
-                            onOpenProfile={onOpenProfile} 
-                            peopleProfiles={peopleProfiles}
-                          />
+                          <EntryCardContent entry={entry} isPerson={isPerson} isTopic={isTopic} name={name} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
                         </div>
                       ))}
                     </div>
