@@ -156,7 +156,7 @@
     };
 
     // ==========================================
-    // 共通コンポーネント (TagListにTopicを追加)
+    // 共通コンポーネント
     // ==========================================
     function TagList({ places, people, topics, onOpenProfile, peopleProfiles = {} }) {
       if (!places?.length && !people?.length && !topics?.length) return null;
@@ -217,6 +217,45 @@
             <a href={embedUrl}>Loading Tweet...</a>
           </blockquote>
         </div>
+      );
+    }
+
+    // 各タブで共通使用する日記カード内容コンポーネント
+    function EntryCardContent({ entry, isPerson = false, isTopic = false, name = '', onOpenProfile, peopleProfiles }) {
+      const tweetUrls = extractTweetUrls(entry.twitterUrl || '');
+      
+      return (
+        <>
+          {entry.images && entry.images.length > 0 && (
+            <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-100 mb-4">
+              {entry.images.map((img, i) => (
+                <div key={`img-${i}`} className="w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
+                  <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {entry.topic1 && <h4 className="font-bold text-sm text-purple-600 mt-1 mb-1">【{entry.topic1}】</h4>}
+          {entry.what1 && <p className="text-gray-800 whitespace-pre-wrap break-words text-[15px] leading-relaxed mb-3">{entry.what1}</p>}
+          
+          {entry.topic2 && <h4 className="font-bold text-sm text-purple-600 mt-1 mb-1">【{entry.topic2}】</h4>}
+          {entry.what2 && <p className="text-gray-800 whitespace-pre-wrap break-words text-[15px] leading-relaxed mb-3">{entry.what2}</p>}
+
+          {tweetUrls.length > 0 && (
+            <div className="flex flex-col gap-2 mb-4">
+              {tweetUrls.map((url, i) => <TweetEmbed key={`tweet-${i}`} url={url} />)}
+            </div>
+          )}
+
+          <TagList 
+            places={splitTags(entry.where).filter(p => !(!isPerson && !isTopic && p === name))} 
+            people={splitTags(entry.withWhom).filter(p => !(isPerson && p === name))} 
+            topics={[...splitTags(entry.topic1), ...splitTags(entry.topic2)].filter(p => !(isTopic && p === name))}
+            onOpenProfile={onOpenProfile} 
+            peopleProfiles={peopleProfiles}
+          />
+        </>
       );
     }
 
@@ -293,7 +332,7 @@
             await fetch(GAS_WEB_APP_URL, {
               method: 'POST',
               headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
-              body: JSON.stringify({ type: 'profile', name: name, xUsername: data.xUsername }),
+              body: JSON.stringify({ type: 'profile', name: name, xUsername: data.xUsername, memo: data.memo }),
             });
           } catch (error) {}
         }
@@ -480,14 +519,18 @@
     }
 
     // ==========================================
-    // 入力タブ (Topic欄を追加)
+    // 入力タブ
     // ==========================================
     function HomeTab({ viewingDateStr, setViewingDateStr, todayStr, entries, onSave, isGasLinked, onOpenProfile, peopleProfiles }) {
-      const [what, setWhat] = useState('');
       const [where, setWhere] = useState('');
       const [withWhom, setWithWhom] = useState('');
-      const [topic, setTopic] = useState(''); 
       const [images, setImages] = useState([]);
+      
+      const [topic1, setTopic1] = useState('');
+      const [what1, setWhat1] = useState('');
+      const [topic2, setTopic2] = useState('');
+      const [what2, setWhat2] = useState('');
+      const [twitterUrl, setTwitterUrl] = useState('');
       
       const [saveMessage, setSaveMessage] = useState('');
       const [isSaving, setIsSaving] = useState(false);
@@ -499,13 +542,17 @@
         const entry = entries.find(e => e.when === viewingDateStr);
         if (viewingDateStr !== lastLoadedDate || (entry && lastLoadedDate === null)) {
           if (entry) {
-            setWhat(entry.what || '');
             setWhere(entry.where || '');
             setWithWhom(entry.withWhom || '');
-            setTopic(entry.topic || ''); 
             setImages(entry.images || []);
+            setTopic1(entry.topic1 || '');
+            setWhat1(entry.what1 || '');
+            setTopic2(entry.topic2 || '');
+            setWhat2(entry.what2 || '');
+            setTwitterUrl(entry.twitterUrl || '');
           } else {
-            setWhat(''); setWhere(''); setWithWhom(''); setTopic(''); setImages([]);
+            setWhere(''); setWithWhom(''); setImages([]);
+            setTopic1(''); setTopic2(''); setWhat1(''); setWhat2(''); setTwitterUrl('');
           }
           setLastLoadedDate(viewingDateStr);
         }
@@ -514,33 +561,39 @@
       const forceSave = () => {
         const entry = entries.find(e => e.when === viewingDateStr);
         const isChanged = 
-          (entry?.what || '') !== what ||
+          (entry?.what1 || '') !== what1 ||
+          (entry?.what2 || '') !== what2 ||
           (entry?.where || '') !== where ||
           (entry?.withWhom || '') !== withWhom ||
-          (entry?.topic || '') !== topic ||
+          (entry?.topic1 || '') !== topic1 ||
+          (entry?.topic2 || '') !== topic2 ||
+          (entry?.twitterUrl || '') !== twitterUrl ||
           JSON.stringify(entry?.images || []) !== JSON.stringify(images);
 
-        const hasContent = what || where || withWhom || topic || images.length > 0;
+        const hasContent = what1 || what2 || where || withWhom || topic1 || topic2 || twitterUrl || images.length > 0;
 
         if (isChanged && hasContent) {
-          onSave({ when: viewingDateStr, what, where, withWhom, topic, images });
+          onSave({ when: viewingDateStr, what1, what2, where, withWhom, topic1, topic2, twitterUrl, images });
         }
       };
 
       useEffect(() => {
         const entry = entries.find(e => e.when === viewingDateStr);
         const isChanged = 
-          (entry?.what || '') !== what ||
+          (entry?.what1 || '') !== what1 ||
+          (entry?.what2 || '') !== what2 ||
           (entry?.where || '') !== where ||
           (entry?.withWhom || '') !== withWhom ||
-          (entry?.topic || '') !== topic ||
+          (entry?.topic1 || '') !== topic1 ||
+          (entry?.topic2 || '') !== topic2 ||
+          (entry?.twitterUrl || '') !== twitterUrl ||
           JSON.stringify(entry?.images || []) !== JSON.stringify(images);
 
-        const hasContent = what || where || withWhom || topic || images.length > 0;
+        const hasContent = what1 || what2 || where || withWhom || topic1 || topic2 || twitterUrl || images.length > 0;
 
         if (isChanged && hasContent) {
           const timerId = setTimeout(async () => {
-            const res = await onSave({ when: viewingDateStr, what, where, withWhom, topic, images });
+            const res = await onSave({ when: viewingDateStr, what1, what2, where, withWhom, topic1, topic2, twitterUrl, images });
             if (res && res.error) {
               setSaveMessage('自動保存エラー: ' + res.error);
             } else {
@@ -550,7 +603,7 @@
           }, 1500);
           return () => clearTimeout(timerId);
         }
-      }, [what, where, withWhom, topic, images, viewingDateStr, entries, onSave]); 
+      }, [what1, what2, topic1, topic2, twitterUrl, where, withWhom, images, viewingDateStr, entries, onSave]); 
 
       const touchStartX = useRef(null);
       const touchStartY = useRef(null);
@@ -618,7 +671,7 @@
 
       const handleSave = async () => {
         setIsSaving(true);
-        const res = await onSave({ when: viewingDateStr, what, where, withWhom, topic, images });
+        const res = await onSave({ when: viewingDateStr, what1, what2, where, withWhom, topic1, topic2, twitterUrl, images });
         setIsSaving(false);
         
         if (res && res.error) {
@@ -646,7 +699,6 @@
 
       const [year, month, day] = viewingDateStr.split('-');
       const isToday = viewingDateStr === todayStr;
-      const inputTweetUrls = extractTweetUrls(what);
 
       return (
         <div 
@@ -677,11 +729,6 @@
             <div key={viewingDateStr} className={`${slideEffect} px-4 flex flex-col gap-4 pb-4 pt-4`}>
               <div className="space-y-3 bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-gray-100 relative">
                 
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-layer-group text-gray-400 text-xs"></i></div>
-                  <input type="text" value={topic} onChange={(e) => setTopic(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="テーマ / コミュニティ (例: 健康維持、チーム既婚者)" disabled={isSaving} />
-                </div>
-
                 <div className="grid grid-cols-2 gap-2">
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-map-marker-alt text-gray-400 text-xs"></i></div>
@@ -709,13 +756,32 @@
                   )}
                 </div>
 
+                {/* トピック1 */}
+                <div className="relative mt-2">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-layer-group text-purple-400 text-xs"></i></div>
+                  <input type="text" value={topic1} onChange={(e) => setTopic1(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="トピック1 (例: 健康維持)" disabled={isSaving} />
+                </div>
                 <div className="relative">
-                  <textarea value={what} onChange={(e) => setWhat(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none text-base bg-gray-50 placeholder-gray-400" rows="4" placeholder="できごと (お店以外の前提情報は、テーマのプロフィールに書くのがオススメです)" disabled={isSaving}/>
-                  {inputTweetUrls.length > 0 && <span className="absolute top-2 right-2 text-[10px] text-blue-500 bg-white/80 px-1 rounded"><i className="fab fa-twitter"></i> Xリンク検知</span>}
+                  <textarea value={what1} onChange={(e) => setWhat1(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none resize-none text-[15px] bg-gray-50 placeholder-gray-400" rows="3" placeholder="トピック1に関連する内容" disabled={isSaving}/>
+                </div>
+
+                {/* トピック2 */}
+                <div className="relative mt-2">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-layer-group text-purple-400 text-xs"></i></div>
+                  <input type="text" value={topic2} onChange={(e) => setTopic2(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="トピック2 (例: チーム既婚者)" disabled={isSaving} />
+                </div>
+                <div className="relative">
+                  <textarea value={what2} onChange={(e) => setWhat2(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none resize-none text-[15px] bg-gray-50 placeholder-gray-400" rows="3" placeholder="トピック2に関連する内容" disabled={isSaving}/>
+                </div>
+
+                {/* TwitterURL */}
+                <div className="relative mt-2">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fab fa-twitter text-blue-400 text-xs"></i></div>
+                  <input type="text" value={twitterUrl} onChange={(e) => setTwitterUrl(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="Twitter URL (自動でツイートが表示されます)" disabled={isSaving} />
                   
-                  {inputTweetUrls.length > 0 && (
+                  {twitterUrl && extractTweetUrls(twitterUrl).length > 0 && (
                     <div className="flex flex-col gap-2 mt-2">
-                      {inputTweetUrls.map((url, i) => <TweetEmbed key={`input-${url}-${i}`} url={url} />)}
+                      {extractTweetUrls(twitterUrl).map((url, i) => <TweetEmbed key={`input-${url}-${i}`} url={url} />)}
                     </div>
                   )}
                 </div>
@@ -744,7 +810,6 @@
                       const entryYear = entry.when.split('-')[0];
                       const currentYear = new Date(todayStr).getFullYear();
                       const diffYear = currentYear - parseInt(entryYear);
-                      const tweetUrls = extractTweetUrls(entry.what);
 
                       return (
                         <div key={idx} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
@@ -754,25 +819,7 @@
                             </div>
                           </div>
                           
-                          {entry.images && entry.images.length > 0 && (
-                            <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-100 mb-4">
-                              {entry.images.map((img, i) => (
-                                <div key={`past-img-${i}`} className="w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
-                                  <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          <p className="text-gray-800 whitespace-pre-wrap break-words text-[15px] leading-relaxed mb-4">{entry.what}</p>
-                          
-                          {tweetUrls.length > 0 && (
-                            <div className="flex flex-col gap-2 mb-4">
-                              {tweetUrls.map((url, i) => <TweetEmbed key={`past-${url}-${i}`} url={url} />)}
-                            </div>
-                          )}
-
-                          <TagList places={splitTags(entry.where)} people={splitTags(entry.withWhom)} topics={splitTags(entry.topic)} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
+                          <EntryCardContent entry={entry} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
                         </div>
                       );
                     })}
@@ -785,6 +832,9 @@
       );
     }
 
+    // ==========================================
+    // カレンダータブ
+    // ==========================================
     function CalendarTab({ entries, todayStr, onSelectDate, onOpenProfile, peopleProfiles, resetKey, mainRef }) {
       const currentYear = new Date(todayStr).getFullYear();
       const [years, setYears] = useState(() => Array.from({ length: 11 }, (_, i) => currentYear - 10 + i));
@@ -801,8 +851,6 @@
         if (!selectedDate) return null;
         return entries.find(e => e.when === selectedDate) || null;
       }, [selectedDate, entries]);
-
-      const tweetUrls = selectedEntry ? extractTweetUrls(selectedEntry.what) : [];
 
       const topObserverRef = useRef(null);
       const bottomObserverRef = useRef(null);
@@ -901,29 +949,7 @@
                 </div>
                 <div className="p-6 overflow-y-auto overflow-x-hidden">
                   {selectedEntry ? (
-                    <>
-                      {selectedEntry.images && selectedEntry.images.length > 0 && (
-                        <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-100 mb-4">
-                          {selectedEntry.images.map((img, i) => (
-                            <div key={`modal-img-${i}`} className="w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
-                              <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      <p className="text-gray-800 whitespace-pre-wrap text-[15px] leading-relaxed mb-4">{selectedEntry.what}</p>
-
-                      {tweetUrls.length > 0 && (
-                        <div className="flex flex-col gap-2 mb-4">
-                          {tweetUrls.map((url, i) => <TweetEmbed key={`modal-${url}-${i}`} url={url} />)}
-                        </div>
-                      )}
-
-                      <div className="mb-4">
-                        <TagList places={splitTags(selectedEntry.where)} people={splitTags(selectedEntry.withWhom)} topics={splitTags(selectedEntry.topic)} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
-                      </div>
-                    </>
+                    <EntryCardContent entry={selectedEntry} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
                   ) : <div className="text-center py-6 text-gray-400 text-sm">この日の日記はありません。</div>}
                   <button onClick={() => { onSelectDate(selectedDate); setSelectedDate(null); }} className="w-full mt-4 bg-blue-50 text-blue-600 font-bold py-3 rounded-2xl hover:bg-blue-100 flex justify-center items-center active:scale-95 transition-transform">
                     <i className="fas fa-pen-to-square mr-2"></i> この日を編集する
@@ -973,6 +999,9 @@
       );
     }
 
+    // ==========================================
+    // 検索タブ
+    // ==========================================
     function SearchTab({ entries, onOpenProfile, onSelectDate, peopleProfiles, query, setQuery, filterTag, setFilterTag }) {
       const popularPeople = useMemo(() => {
         const map = {};
@@ -988,7 +1017,10 @@
 
       const popularTopics = useMemo(() => {
         const map = {};
-        entries.forEach(e => splitTags(e.topic).forEach(p => map[p] = (map[p] || 0) + 1));
+        entries.forEach(e => {
+          splitTags(e.topic1).forEach(p => map[p] = (map[p] || 0) + 1);
+          splitTags(e.topic2).forEach(p => map[p] = (map[p] || 0) + 1);
+        });
         return Object.keys(map).sort((a, b) => a.localeCompare(b, 'ja'));
       }, [entries]);
 
@@ -997,7 +1029,7 @@
           return entries.filter(e => {
             if (filterTag.type === 'person') return splitTags(e.withWhom).includes(filterTag.value);
             if (filterTag.type === 'place') return splitTags(e.where).includes(filterTag.value);
-            if (filterTag.type === 'topic') return splitTags(e.topic).includes(filterTag.value);
+            if (filterTag.type === 'topic') return splitTags(e.topic1).includes(filterTag.value) || splitTags(e.topic2).includes(filterTag.value);
             return false;
           }).sort((a, b) => new Date(b.when) - new Date(a.when));
         }
@@ -1005,10 +1037,12 @@
         if (!query.trim()) return [];
         const lower = query.toLowerCase();
         return entries.filter(e => 
-          (e.what || '').toLowerCase().includes(lower) || 
+          (e.what1 || '').toLowerCase().includes(lower) || 
+          (e.what2 || '').toLowerCase().includes(lower) || 
           (e.where || '').toLowerCase().includes(lower) || 
           (e.withWhom || '').toLowerCase().includes(lower) ||
-          (e.topic || '').toLowerCase().includes(lower)
+          (e.topic1 || '').toLowerCase().includes(lower) ||
+          (e.topic2 || '').toLowerCase().includes(lower)
         ).sort((a, b) => new Date(b.when) - new Date(a.when));
       }, [query, filterTag, entries]);
 
@@ -1093,40 +1127,17 @@
             ) : (
               <div className="space-y-6">
                 <p className="text-sm text-gray-500 mb-2">{filteredEntries.length}件見つかりました</p>
-                {filteredEntries.map((entry, idx) => {
-                  const tweetUrls = extractTweetUrls(entry.what);
-
-                  return (
-                    <div key={idx} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
-                      <div className="text-sm font-bold text-blue-600 mb-3 flex justify-between border-b border-gray-50 pb-2">
-                        <div className="flex items-center gap-2">
-                          <span>{entry.when && entry.when.replace(/-/g, '/')} <span className="text-xs">({getDayOfWeek(entry.when)})</span></span>
-                          <button onClick={() => onSelectDate(entry.when)} className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors active:scale-95"><i className="fas fa-pen mr-1"></i>編集</button>
-                        </div>
+                {filteredEntries.map((entry, idx) => (
+                  <div key={idx} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
+                    <div className="text-sm font-bold text-blue-600 mb-3 flex justify-between border-b border-gray-50 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span>{entry.when && entry.when.replace(/-/g, '/')} <span className="text-xs">({getDayOfWeek(entry.when)})</span></span>
+                        <button onClick={() => onSelectDate(entry.when)} className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors active:scale-95"><i className="fas fa-pen mr-1"></i>編集</button>
                       </div>
-
-                      {entry.images && entry.images.length > 0 && (
-                        <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-white p-1 rounded-2xl border border-gray-100 mb-4">
-                          {entry.images.map((img, i) => (
-                            <div key={`search-img-${i}`} className="w-full h-full bg-gray-50 rounded-xl overflow-hidden shadow-sm">
-                              <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      <p className="text-gray-800 whitespace-pre-wrap break-words text-[15px] leading-relaxed mb-4">{entry.what}</p>
-                      
-                      {tweetUrls.length > 0 && (
-                        <div className="flex flex-col gap-2 mb-4">
-                          {tweetUrls.map((url, i) => <TweetEmbed key={`search-${url}-${i}`} url={url} />)}
-                        </div>
-                      )}
-
-                      <TagList places={splitTags(entry.where)} people={splitTags(entry.withWhom)} topics={splitTags(entry.topic)} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
                     </div>
-                  );
-                })}
+                    <EntryCardContent entry={entry} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -1134,6 +1145,9 @@
       );
     }
 
+    // ==========================================
+    // インサイト・振り返りタブ
+    // ==========================================
     function InsightsTab({ entries, onOpenProfile, peopleProfiles, resetKey, todayStr }) {
       const [viewMode, setViewMode] = useState('monthly'); 
       
@@ -1558,7 +1572,7 @@
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="fixed bottom-16 left-0 w-full bg-gray-50 border-t border-gray-200 p-3 z-20" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
+          <div className="fixed bottom-16 left-0 w-full bg-gray-50 border-t border-gray-200 p-3 z-20" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-bottom))' }}>
             <div className="flex items-center gap-2 bg-white rounded-full border border-gray-200 p-1 pl-4 shadow-sm max-w-lg mx-auto">
               <input 
                 type="text" 
@@ -1591,8 +1605,7 @@
       const personProfile = isPerson ? (peopleProfiles[name] || {}) : null;
       const xUsername = personProfile?.xUsername;
       
-      // ★トピック/人用のWikiメモ状態
-      const wikiMemo = topicsWiki[name]?.memo || '';
+      const wikiMemo = isPerson ? (peopleProfiles[name]?.memo || '') : (topicsWiki[name]?.memo || '');
       const [wikiText, setWikiText] = useState(wikiMemo);
       const [isSavingWiki, setIsSavingWiki] = useState(false);
       
@@ -1616,10 +1629,13 @@
         setEditX(false);
       };
 
-      // ★Wikiメモの保存
       const handleSaveWiki = async () => {
         setIsSavingWiki(true);
-        await updateTopicWiki(name, wikiText); 
+        if (isPerson) {
+          await updatePersonProfile(name, { memo: wikiText });
+        } else {
+          await updateTopicWiki(name, wikiText); 
+        }
         setIsSavingWiki(false);
       };
       
@@ -1632,7 +1648,7 @@
         return entries.filter(e => {
           if (type === 'person') return splitTags(e.withWhom).includes(name);
           if (type === 'place') return splitTags(e.where).includes(name);
-          if (type === 'topic') return splitTags(e.topic).includes(name);
+          if (type === 'topic') return splitTags(e.topic1).includes(name) || splitTags(e.topic2).includes(name);
           return false;
         }).sort((a, b) => new Date(b.when) - new Date(a.when));
       }, [entries, type, name]);
@@ -1704,7 +1720,6 @@
 
             <div className="flex-1 overflow-y-auto overflow-x-hidden w-full p-5 space-y-6 pb-10">
               
-              {/* ★Wiki(前提メモ) エリアを追加 */}
               {(isTopic || isPerson) && (
                 <div className={`${isPerson ? 'bg-orange-50 border-orange-100' : 'bg-purple-50 border-purple-100'} p-4 rounded-3xl shadow-sm border`}>
                   <h3 className={`text-xs font-bold ${isPerson ? 'text-orange-600' : 'text-purple-600'} mb-2 uppercase tracking-wider flex justify-between items-center`}>
@@ -1771,25 +1786,7 @@
                             </div>
                           </div>
 
-                          {entry.images && entry.images.length > 0 && (
-                            <div className="flex gap-1 w-full mb-3">
-                              {entry.images.slice(0, 4).map((img, i) => (
-                                <div key={`modal-img-${idx}-${i}`} className="flex-1 aspect-square rounded-xl overflow-hidden bg-gray-50 border border-gray-100 shadow-sm">
-                                  <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {entry.what && <p className="text-gray-700 text-[13px] whitespace-pre-wrap break-words leading-relaxed mb-3">{entry.what}</p>}
-                          
-                          <TagList 
-                            places={splitTags(entry.where).filter(p => !(!isPerson && !isTopic && p === name))} 
-                            people={splitTags(entry.withWhom).filter(p => !(isPerson && p === name))} 
-                            topics={splitTags(entry.topic).filter(p => !(isTopic && p === name))}
-                            onOpenProfile={onOpenProfile} 
-                            peopleProfiles={peopleProfiles}
-                          />
+                          <EntryCardContent entry={entry} isPerson={isPerson} isTopic={isTopic} name={name} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
                         </div>
                       ))}
                     </div>
