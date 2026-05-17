@@ -229,7 +229,7 @@
       const [isLoading, setIsLoading] = useState(false);
       const [selectedProfile, setSelectedProfile] = useState(null); 
       const [peopleProfiles, setPeopleProfiles] = useState({});
-      const [topicsWiki, setTopicsWiki] = useState({}); // ★Wiki状態を追加
+      const [topicsWiki, setTopicsWiki] = useState({}); 
       
       const mainRef = useRef(null); 
       
@@ -261,7 +261,7 @@
                 const sortedData = data.entries.filter(e => e.when).sort((a, b) => new Date(b.when) - new Date(a.when));
                 setEntries(sortedData);
                 if (data.profiles) setPeopleProfiles(data.profiles);
-                if (data.topicsWiki) setTopicsWiki(data.topicsWiki); // ★Wiki状態の読み込み
+                if (data.topicsWiki) setTopicsWiki(data.topicsWiki); 
               }
             } catch (error) {
               console.error("データの取得に失敗しました:", error);
@@ -299,7 +299,6 @@
         }
       };
 
-      // ★トピックのWiki更新処理
       const updateTopicWiki = async (name, memo) => {
         setTopicsWiki(prev => ({ ...prev, [name]: { memo } }));
         if (GAS_WEB_APP_URL) {
@@ -487,7 +486,7 @@
       const [what, setWhat] = useState('');
       const [where, setWhere] = useState('');
       const [withWhom, setWithWhom] = useState('');
-      const [topic, setTopic] = useState(''); // ★追加
+      const [topic, setTopic] = useState(''); 
       const [images, setImages] = useState([]);
       
       const [saveMessage, setSaveMessage] = useState('');
@@ -503,7 +502,7 @@
             setWhat(entry.what || '');
             setWhere(entry.where || '');
             setWithWhom(entry.withWhom || '');
-            setTopic(entry.topic || ''); // ★追加
+            setTopic(entry.topic || ''); 
             setImages(entry.images || []);
           } else {
             setWhat(''); setWhere(''); setWithWhom(''); setTopic(''); setImages([]);
@@ -678,7 +677,6 @@
             <div key={viewingDateStr} className={`${slideEffect} px-4 flex flex-col gap-4 pb-4 pt-4`}>
               <div className="space-y-3 bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-gray-100 relative">
                 
-                {/* ★Topic(コミュニティ/テーマ) 追加 */}
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-layer-group text-gray-400 text-xs"></i></div>
                   <input type="text" value={topic} onChange={(e) => setTopic(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="テーマ / コミュニティ (例: 健康維持、チーム既婚者)" disabled={isSaving} />
@@ -774,7 +772,6 @@
                             </div>
                           )}
 
-                          {/* ★タグリストにTopicを渡す */}
                           <TagList places={splitTags(entry.where)} people={splitTags(entry.withWhom)} topics={splitTags(entry.topic)} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
                         </div>
                       );
@@ -788,9 +785,6 @@
       );
     }
 
-    // ==========================================
-    // カレンダータブ
-    // ==========================================
     function CalendarTab({ entries, todayStr, onSelectDate, onOpenProfile, peopleProfiles, resetKey, mainRef }) {
       const currentYear = new Date(todayStr).getFullYear();
       const [years, setYears] = useState(() => Array.from({ length: 11 }, (_, i) => currentYear - 10 + i));
@@ -979,9 +973,6 @@
       );
     }
 
-    // ==========================================
-    // 検索タブ
-    // ==========================================
     function SearchTab({ entries, onOpenProfile, onSelectDate, peopleProfiles, query, setQuery, filterTag, setFilterTag }) {
       const popularPeople = useMemo(() => {
         const map = {};
@@ -995,7 +986,6 @@
         return Object.keys(map).sort((a, b) => a.localeCompare(b, 'ja'));
       }, [entries]);
 
-      // ★Topicのサジェストを追加
       const popularTopics = useMemo(() => {
         const map = {};
         entries.forEach(e => splitTags(e.topic).forEach(p => map[p] = (map[p] || 0) + 1));
@@ -1047,7 +1037,6 @@
             {!query.trim() && !filterTag && (popularPeople.length > 0 || popularPlaces.length > 0 || popularTopics.length > 0) && (
               <div className="mb-8 space-y-6">
                 
-                {/* ★Topic一覧 */}
                 {popularTopics.length > 0 && (
                   <div>
                     <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center"><i className="fas fa-layer-group mr-1"></i> テーマ / コミュニティ</h3>
@@ -1145,9 +1134,6 @@
       );
     }
 
-    // ==========================================
-    // インサイト・振り返りタブ
-    // ==========================================
     function InsightsTab({ entries, onOpenProfile, peopleProfiles, resetKey, todayStr }) {
       const [viewMode, setViewMode] = useState('monthly'); 
       
@@ -1500,9 +1486,6 @@
       );
     }
 
-    // ==========================================
-    // チャットタブ
-    // ==========================================
     function ChatTab({ resetKey }) {
       const initialMessage = { role: 'ai', text: 'こんにちは！あなたの日記をすべて読み込みました。思い出について何でも聞いてください。(*例：最近Aさんとどこに行ったっけ？、去年の秋は何をしてた？*)' };
       const [messages, setMessages] = useState([initialMessage]);
@@ -1598,22 +1581,19 @@
       );
     }
 
-    // ==========================================
-    // モーダル (Wiki機能を実装)
-    // ==========================================
     function ProfileModal({ profile, entries, onClose, onOpenProfile, onSelectDate, peopleProfiles, updatePersonProfile, topicsWiki, updateTopicWiki }) {
       if (!profile) return null;
       const { type, name } = profile;
       
       const isPerson = type === 'person';
-      const isTopic = type === 'topic'; // ★追加
+      const isTopic = type === 'topic';
       
       const personProfile = isPerson ? (peopleProfiles[name] || {}) : null;
       const xUsername = personProfile?.xUsername;
       
-      // ★トピック用のWikiメモ状態
-      const topicMemo = isTopic ? (topicsWiki[name]?.memo || '') : '';
-      const [wikiText, setWikiText] = useState(topicMemo);
+      // ★トピック/人用のWikiメモ状態
+      const wikiMemo = topicsWiki[name]?.memo || '';
+      const [wikiText, setWikiText] = useState(wikiMemo);
       const [isSavingWiki, setIsSavingWiki] = useState(false);
       
       const [editX, setEditX] = useState(false);
@@ -1625,8 +1605,8 @@
       }, [xUsername]);
 
       useEffect(() => {
-        setWikiText(topicMemo);
-      }, [topicMemo]);
+        setWikiText(wikiMemo);
+      }, [wikiMemo]);
 
       const handleSaveX = async () => {
         setIsSavingX(true);
@@ -1639,7 +1619,7 @@
       // ★Wikiメモの保存
       const handleSaveWiki = async () => {
         setIsSavingWiki(true);
-        await updateTopicWiki(name, wikiText);
+        await updateTopicWiki(name, wikiText); 
         setIsSavingWiki(false);
       };
       
@@ -1652,7 +1632,7 @@
         return entries.filter(e => {
           if (type === 'person') return splitTags(e.withWhom).includes(name);
           if (type === 'place') return splitTags(e.where).includes(name);
-          if (type === 'topic') return splitTags(e.topic).includes(name); // ★追加
+          if (type === 'topic') return splitTags(e.topic).includes(name);
           return false;
         }).sort((a, b) => new Date(b.when) - new Date(a.when));
       }, [entries, type, name]);
@@ -1665,7 +1645,6 @@
         const relatedMap = {};
         
         relatedEntries.forEach(e => {
-          // トピックの場合は「どこ」や「誰と」を集計する
           const tags = type === 'person' ? splitTags(e.where) : type === 'place' ? splitTags(e.withWhom) : [...splitTags(e.where), ...splitTags(e.withWhom)];
           tags.forEach(t => {
             relatedMap[t] = (relatedMap[t] || 0) + 1;
@@ -1725,13 +1704,13 @@
 
             <div className="flex-1 overflow-y-auto overflow-x-hidden w-full p-5 space-y-6 pb-10">
               
-              {/* ★トピック用のWiki(前提メモ) エリアを追加 */}
-              {isTopic && (
-                <div className="bg-purple-50 p-4 rounded-3xl shadow-sm border border-purple-100">
-                  <h3 className="text-xs font-bold text-purple-600 mb-2 uppercase tracking-wider flex justify-between items-center">
+              {/* ★Wiki(前提メモ) エリアを追加 */}
+              {(isTopic || isPerson) && (
+                <div className={`${isPerson ? 'bg-orange-50 border-orange-100' : 'bg-purple-50 border-purple-100'} p-4 rounded-3xl shadow-sm border`}>
+                  <h3 className={`text-xs font-bold ${isPerson ? 'text-orange-600' : 'text-purple-600'} mb-2 uppercase tracking-wider flex justify-between items-center`}>
                     <span><i className="fas fa-book-open mr-2"></i>前提メモ (Wiki)</span>
-                    {topicMemo !== wikiText && (
-                      <button onClick={handleSaveWiki} disabled={isSavingWiki} className="bg-purple-600 text-white px-3 py-1 rounded-lg text-xs hover:bg-purple-700 active:scale-95 transition-all">
+                    {wikiMemo !== wikiText && (
+                      <button onClick={handleSaveWiki} disabled={isSavingWiki} className={`${isPerson ? 'bg-orange-600 hover:bg-orange-700' : 'bg-purple-600 hover:bg-purple-700'} text-white px-3 py-1 rounded-lg text-xs active:scale-95 transition-all`}>
                         {isSavingWiki ? '保存中...' : '保存'}
                       </button>
                     )}
@@ -1739,8 +1718,8 @@
                   <textarea 
                     value={wikiText} 
                     onChange={e => setWikiText(e.target.value)} 
-                    placeholder="このコミュニティやテーマの前提情報、関わり方、メンバー情報などを自由にメモできます。ここに書いた内容はAIチャットの「前提知識」として読み込まれます。"
-                    className="w-full bg-white/50 p-3 rounded-2xl text-[13px] text-gray-700 border border-purple-200/50 outline-none focus:ring-2 focus:ring-purple-400 focus:bg-white resize-none"
+                    placeholder={isPerson ? "この人の前提情報や関係性などを自由にメモできます。ここに書いた内容はAIチャットの「前提知識」として読み込まれます。" : "このコミュニティやテーマの前提情報、関わり方、メンバー情報などを自由にメモできます。ここに書いた内容はAIチャットの「前提知識」として読み込まれます。"}
+                    className={`w-full bg-white/50 p-3 rounded-2xl text-[13px] text-gray-700 border ${isPerson ? 'border-orange-200/50 focus:ring-orange-400' : 'border-purple-200/50 focus:ring-purple-400'} outline-none focus:ring-2 focus:bg-white resize-none`}
                     rows="4"
                   />
                 </div>
