@@ -399,6 +399,7 @@
                 isGasLinked={!!GAS_WEB_APP_URL} 
                 onOpenProfile={setSelectedProfile}
                 peopleProfiles={peopleProfiles}
+                availableTopics={Object.keys(topicsWiki)}
               />
             )}
             {activeTab === 'calendar' && (
@@ -481,7 +482,7 @@
       );
     }
 
-    function HomeTab({ viewingDateStr, setViewingDateStr, todayStr, entries, onSave, isGasLinked, onOpenProfile, peopleProfiles }) {
+    function HomeTab({ viewingDateStr, setViewingDateStr, todayStr, entries, onSave, isGasLinked, onOpenProfile, peopleProfiles, availableTopics = [] }) {
       const [where, setWhere] = useState('');
       const [withWhom, setWithWhom] = useState('');
       const [images, setImages] = useState([]);
@@ -498,6 +499,9 @@
       const [slideEffect, setSlideEffect] = useState('animate-fade-in');
       const [lastLoadedDate, setLastLoadedDate] = useState(null);
 
+      const displayTopics1 = Array.from(new Set([...availableTopics, topic1].filter(Boolean)));
+      const displayTopics2 = Array.from(new Set([...availableTopics, topic2].filter(Boolean)));
+
       useEffect(() => {
         const entry = entries.find(e => e.when === viewingDateStr);
         if (viewingDateStr !== lastLoadedDate || (entry && lastLoadedDate === null)) {
@@ -506,7 +510,6 @@
             setWithWhom(entry.withWhom || '');
             setImages(entry.images || []);
             
-            // ★ 個別フィールドとして直接GASから受け取れる場合はそれを使用
             if (entry.topic1 !== undefined) {
               setTopic1(entry.topic1 || '');
               setTopic2(entry.topic2 || '');
@@ -514,7 +517,6 @@
               setWhat2(entry.what2 || '');
               setTwitterUrl(entry.twitterUrl || '');
             } else {
-              // 互換性フォールバック（旧データ等）
               const topics = splitTags(entry.topic);
               setTopic1(topics[0] || '');
               setTopic2(topics[1] || '');
@@ -573,7 +575,6 @@
           topic2,
           what2,
           twitterUrl,
-          // 既存仕様・表示用の互換性
           what: buildWhatToSave(), 
           topic: buildTopicToSave()
         };
@@ -782,21 +783,47 @@
                 </div>
 
                 {/* トピック1 */}
-                <div className="relative mt-2">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-layer-group text-purple-400 text-xs"></i></div>
-                  <input type="text" value={topic1} onChange={(e) => setTopic1(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="トピック1 (例: 健康維持)" disabled={isSaving} />
-                </div>
-                <div className="relative">
-                  <textarea value={what1} onChange={(e) => setWhat1(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none resize-none text-sm bg-gray-50 placeholder-gray-400" rows="3" placeholder="トピック1に関連する内容" disabled={isSaving}/>
+                <div className="mt-4">
+                  <div className="text-xs font-bold text-gray-500 mb-2 flex items-center"><i className="fas fa-layer-group text-purple-400 mr-1.5"></i>トピック1</div>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {displayTopics1.length > 0 ? displayTopics1.map(t => (
+                      <button
+                        key={`t1-${t}`}
+                        onClick={() => setTopic1(topic1 === t ? '' : t)}
+                        disabled={isSaving}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-xl border transition-all active:scale-95 ${topic1 === t ? 'bg-purple-500 text-white border-purple-500 shadow-md' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
+                      >
+                        {t}
+                      </button>
+                    )) : (
+                      <span className="text-xs text-gray-400">スプレッドシートのTopicsにトピックを追加してください</span>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <textarea value={what1} onChange={(e) => setWhat1(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none resize-none text-sm bg-gray-50 placeholder-gray-400" rows="3" placeholder="トピック1に関連する内容" disabled={isSaving}/>
+                  </div>
                 </div>
 
                 {/* トピック2 */}
-                <div className="relative mt-2">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-layer-group text-purple-400 text-xs"></i></div>
-                  <input type="text" value={topic2} onChange={(e) => setTopic2(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="トピック2 (例: チーム既婚者)" disabled={isSaving} />
-                </div>
-                <div className="relative">
-                  <textarea value={what2} onChange={(e) => setWhat2(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none resize-none text-sm bg-gray-50 placeholder-gray-400" rows="3" placeholder="トピック2に関連する内容" disabled={isSaving}/>
+                <div className="mt-4">
+                  <div className="text-xs font-bold text-gray-500 mb-2 flex items-center"><i className="fas fa-layer-group text-purple-400 mr-1.5"></i>トピック2</div>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {displayTopics2.length > 0 ? displayTopics2.map(t => (
+                      <button
+                        key={`t2-${t}`}
+                        onClick={() => setTopic2(topic2 === t ? '' : t)}
+                        disabled={isSaving}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-xl border transition-all active:scale-95 ${topic2 === t ? 'bg-purple-500 text-white border-purple-500 shadow-md' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
+                      >
+                        {t}
+                      </button>
+                    )) : (
+                      <span className="text-xs text-gray-400">スプレッドシートのTopicsにトピックを追加してください</span>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <textarea value={what2} onChange={(e) => setWhat2(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none resize-none text-sm bg-gray-50 placeholder-gray-400" rows="3" placeholder="トピック2に関連する内容" disabled={isSaving}/>
+                  </div>
                 </div>
 
                 {/* TwitterURL */}
