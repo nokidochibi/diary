@@ -889,6 +889,12 @@
                             <div className="text-lg font-bold text-blue-600">
                               {entryYear}年 <span className="text-sm font-bold text-blue-600 ml-0.5">({getDayOfWeek(entry.when)})</span> <span className="text-sm text-gray-500 font-normal ml-1">({diffYear}年前)</span>
                             </div>
+                            <button onClick={(e) => { 
+                              setViewingDateStr(entry.when); 
+                              e.target.closest('main')?.scrollTo({ top: 0, behavior: 'smooth' }); 
+                            }} className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors active:scale-95">
+                              <i className="fas fa-pen mr-1"></i>編集
+                            </button>
                           </div>
                           
                           {entry.images && entry.images.length > 0 && (
@@ -1626,7 +1632,7 @@
     }
 
     function ChatTab({ resetKey }) {
-      const initialMessage = { role: 'ai', text: 'こんにちは！あなたの日記をすべて読み込みました。思い出について何でも聞いてください。(*例：最近Aさんとどこに行ったっけ？、去年の秋は何をしてた？*)' };
+      const initialMessage = { role: 'ai', text: 'こんにちは！あなたの日記をすべて読み込みました。思い出について何でも聞いてください。(*例：最近A massiveさんとどこに行ったっけ？、去年の秋は何をしてた？*)' };
       const [messages, setMessages] = useState([initialMessage]);
       const [input, setInput] = useState('');
       const [loading, setLoading] = useState(false);
