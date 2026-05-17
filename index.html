@@ -326,6 +326,24 @@
           return newEntries;
         });
 
+        // ★追加: 日記を保存した際、未登録の人物がいれば自動でPeopleシートに名前を登録する
+        const people = splitTags(entry.withWhom);
+        people.forEach(person => {
+          setPeopleProfiles(prev => {
+            if (!prev[person]) {
+              if (GAS_WEB_APP_URL) {
+                fetch(GAS_WEB_APP_URL, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                  body: JSON.stringify({ type: 'profile', name: person })
+                }).catch(() => {});
+              }
+              return { ...prev, [person]: {} };
+            }
+            return prev;
+          });
+        });
+
         if (GAS_WEB_APP_URL) {
           try {
             const response = await fetch(GAS_WEB_APP_URL, {
