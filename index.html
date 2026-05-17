@@ -50,9 +50,34 @@
       return { __html: html };
     };
 
-    const getDisplayWhat = (rawWhat) => {
-      if (!rawWhat) return '';
-      return rawWhat.split('<!--RAW-->')[0].trim();
+    // ★修正: 旧仕様(whatに合体したデータ)と新仕様(topic1, what1と分かれたデータ)の両方を正しく表示する処理
+    const getDisplayWhat = (entry) => {
+      if (!entry) return '';
+      // 過去のデータの互換性対応
+      if (entry.what) {
+        return entry.what.split('<!--RAW-->')[0].trim();
+      }
+      
+      const displayParts = [];
+      if (entry.topic1 || entry.what1) displayParts.push(entry.topic1 ? `【${entry.topic1}】\n${entry.what1}` : entry.what1);
+      if (entry.topic2 || entry.what2) displayParts.push(entry.topic2 ? `【${entry.topic2}】\n${entry.what2}` : entry.what2);
+      
+      return displayParts.join('\n\n');
+    };
+
+    // ★追加: トピックを正しく抽出する処理（新旧対応）
+    const getEntryTopics = (entry) => {
+      if (!entry) return [];
+      if (entry.topic) return splitTags(entry.topic);
+      return [entry.topic1, entry.topic2].map(t => t ? t.trim() : '').filter(Boolean);
+    };
+
+    // ★追加: TwitterURLを正しく抽出する処理（新旧対応）
+    const getTweetUrls = (entry) => {
+      if (!entry) return [];
+      if (entry.twitterUrl) return extractTweetUrls(entry.twitterUrl);
+      if (entry.what) return extractTweetUrls(entry.what);
+      return [];
     };
 
     const useSwipe = (onSwipeLeft, onSwipeRight) => {
@@ -519,13 +544,15 @@
             setWithWhom(entry.withWhom || '');
             setImages(entry.images || []);
             
-            if (entry.topic1 !== undefined) {
+            // ★修正: 新仕様のデータ読み込みを優先しつつ、古いデータへの対応も行う
+            if (entry.topic1 !== undefined || entry.what1 !== undefined) {
               setTopic1(entry.topic1 || '');
               setTopic2(entry.topic2 || '');
               setWhat1(entry.what1 || '');
               setWhat2(entry.what2 || '');
               setTwitterUrl(entry.twitterUrl || '');
-            } else {
+            } else if (entry.what) {
+              // 古い仕様のデータ構造のフォールバック
               const topics = splitTags(entry.topic);
               setTopic1(topics[0] || '');
               setTopic2(topics[1] || '');
@@ -548,6 +575,8 @@
                 const urls = extractTweetUrls(entry.what);
                 setTwitterUrl(urls.length > 0 ? urls[0] : '');
               }
+            } else {
+              setTopic1(''); setTopic2(''); setWhat1(''); setWhat2(''); setTwitterUrl('');
             }
           } else {
             setWhere(''); setWithWhom(''); setImages([]);
@@ -557,22 +586,7 @@
         }
       }, [viewingDateStr, entries, lastLoadedDate]);
 
-      const buildWhatToSave = () => {
-        const displayParts = [];
-        if (topic1 || what1) displayParts.push(topic1 ? `【${topic1}】\n${what1}` : what1);
-        if (topic2 || what2) displayParts.push(topic2 ? `【${topic2}】\n${what2}` : what2);
-        
-        let displayText = displayParts.join('\n\n');
-        if (twitterUrl) displayText += (displayText ? '\n\n' : '') + twitterUrl;
-        
-        const rawJson = JSON.stringify({ what1, what2, twitterUrl });
-        return `${displayText}<!--RAW-->${rawJson}`;
-      };
-
-      const buildTopicToSave = () => {
-        return [topic1, topic2].map(t => t.trim()).filter(Boolean).join(',');
-      };
-
+      // ★修正: 古い送信データの構築処理（buildWhatToSave, buildTopicToSave）を削除し、GASの仕様に合わせてシンプルに各項目を送る
       const buildPayload = () => {
         return {
           when: viewingDateStr, 
@@ -583,9 +597,7 @@
           what1,
           topic2,
           what2,
-          twitterUrl,
-          what: buildWhatToSave(), 
-          topic: buildTopicToSave()
+          twitterUrl
         };
       };
 
@@ -868,8 +880,9 @@
                       const entryYear = entry.when.split('-')[0];
                       const currentYear = new Date(todayStr).getFullYear();
                       const diffYear = currentYear - parseInt(entryYear);
-                      const displayWhat = getDisplayWhat(entry.what);
-                      const tweetUrls = extractTweetUrls(displayWhat);
+                      // ★修正: 新仕様のデータを使って表示内容を組み立てる
+                      const displayWhat = getDisplayWhat(entry);
+                      const tweetUrls = getTweetUrls(entry);
 
                       return (
                         <div key={idx} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
@@ -903,7 +916,7 @@
                             </div>
                           )}
 
-                          <TagList places={splitTags(entry.where)} people={splitTags(entry.withWhom)} topics={splitTags(entry.topic)} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
+                          <TagList places={splitTags(entry.where)} people={splitTags(entry.withWhom)} topics={getEntryTopics(entry)} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
                         </div>
                       );
                     })}
@@ -933,8 +946,9 @@
         return entries.find(e => e.when === selectedDate) || null;
       }, [selectedDate, entries]);
 
-      const displayWhat = selectedEntry ? getDisplayWhat(selectedEntry.what) : '';
-      const tweetUrls = extractTweetUrls(displayWhat);
+      // ★修正: 新仕様のデータ表示に変更
+      const displayWhat = selectedEntry ? getDisplayWhat(selectedEntry) : '';
+      const tweetUrls = selectedEntry ? getTweetUrls(selectedEntry) : [];
 
       const topObserverRef = useRef(null);
       const bottomObserverRef = useRef(null);
@@ -1053,7 +1067,7 @@
                       )}
 
                       <div className="mb-4">
-                        <TagList places={splitTags(selectedEntry.where)} people={splitTags(selectedEntry.withWhom)} topics={splitTags(selectedEntry.topic)} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
+                        <TagList places={splitTags(selectedEntry.where)} people={splitTags(selectedEntry.withWhom)} topics={getEntryTopics(selectedEntry)} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
                       </div>
                     </>
                   ) : <div className="text-center py-6 text-gray-400 text-sm">この日の日記はありません。</div>}
@@ -1120,7 +1134,8 @@
 
       const popularTopics = useMemo(() => {
         const map = {};
-        entries.forEach(e => splitTags(e.topic).forEach(p => map[p] = (map[p] || 0) + 1));
+        // ★修正: 新仕様のトピックデータから集計する
+        entries.forEach(e => getEntryTopics(e).forEach(p => map[p] = (map[p] || 0) + 1));
         return Object.keys(map).sort((a, b) => a.localeCompare(b, 'ja'));
       }, [entries]);
 
@@ -1129,17 +1144,21 @@
           return entries.filter(e => {
             if (filterTag.type === 'person') return splitTags(e.withWhom).includes(filterTag.value);
             if (filterTag.type === 'place') return splitTags(e.where).includes(filterTag.value);
-            if (filterTag.type === 'topic') return splitTags(e.topic).includes(filterTag.value);
+            // ★修正: 新仕様のトピックデータでフィルタリングする
+            if (filterTag.type === 'topic') return getEntryTopics(e).includes(filterTag.value);
             return false;
           }).sort((a, b) => new Date(b.when) - new Date(a.when));
         }
 
         if (!query.trim()) return [];
         const lower = query.toLowerCase();
+        // ★修正: 新仕様のデータ項目を含めて全文検索できるようにする
         return entries.filter(e => 
-          getDisplayWhat(e.what).toLowerCase().includes(lower) || 
+          getDisplayWhat(e).toLowerCase().includes(lower) || 
           (e.where || '').toLowerCase().includes(lower) || 
           (e.withWhom || '').toLowerCase().includes(lower) ||
+          (e.topic1 || '').toLowerCase().includes(lower) ||
+          (e.topic2 || '').toLowerCase().includes(lower) ||
           (e.topic || '').toLowerCase().includes(lower)
         ).sort((a, b) => new Date(b.when) - new Date(a.when));
       }, [query, filterTag, entries]);
@@ -1226,8 +1245,9 @@
               <div className="space-y-6">
                 <p className="text-sm text-gray-500 mb-2">{filteredEntries.length}件見つかりました</p>
                 {filteredEntries.map((entry, idx) => {
-                  const displayWhat = getDisplayWhat(entry.what);
-                  const tweetUrls = extractTweetUrls(displayWhat);
+                  // ★修正: 新仕様のデータで表示する
+                  const displayWhat = getDisplayWhat(entry);
+                  const tweetUrls = getTweetUrls(entry);
 
                   return (
                     <div key={idx} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
@@ -1256,7 +1276,7 @@
                         </div>
                       )}
 
-                      <TagList places={splitTags(entry.where)} people={splitTags(entry.withWhom)} topics={splitTags(entry.topic)} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
+                      <TagList places={splitTags(entry.where)} people={splitTags(entry.withWhom)} topics={getEntryTopics(entry)} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
                     </div>
                   );
                 })}
@@ -1611,7 +1631,7 @@
         return entries.filter(e => {
           if (type === 'person') return splitTags(e.withWhom).includes(name);
           if (type === 'place') return splitTags(e.where).includes(name);
-          if (type === 'topic') return splitTags(e.topic).includes(name);
+          if (type === 'topic') return getEntryTopics(e).includes(name);
           return false;
         }).sort((a, b) => new Date(b.when) - new Date(a.when));
       }, [entries, type, name]);
@@ -1783,12 +1803,12 @@
                             </div>
                           )}
 
-                          <p className="text-gray-800 whitespace-pre-wrap break-words text-[15px] leading-relaxed mb-4">{getDisplayWhat(entry.what)}</p>
+                          <p className="text-gray-800 whitespace-pre-wrap break-words text-[15px] leading-relaxed mb-4">{getDisplayWhat(entry)}</p>
                           
                           <TagList 
                             places={splitTags(entry.where).filter(p => !(!isPerson && !isTopic && p === name))} 
                             people={splitTags(entry.withWhom).filter(p => !(isPerson && p === name))} 
-                            topics={splitTags(entry.topic).filter(p => !(isTopic && p === name))}
+                            topics={getEntryTopics(entry).filter(p => !(isTopic && p === name))}
                             onOpenProfile={onOpenProfile} 
                             peopleProfiles={peopleProfiles}
                           />
@@ -1811,5 +1831,3 @@
   </script>
 </body>
 </html>
-
-
