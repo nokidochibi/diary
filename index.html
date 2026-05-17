@@ -222,7 +222,6 @@
       );
     }
 
-    const INITIAL_CHAT_MESSAGE = { role: 'ai', text: 'なおくんの日記について知りたいこととか、日記に書いときたい内容があったらここに入れてな。' };
 
     function App() {
       const [activeTab, setActiveTab] = useState('home');
@@ -234,16 +233,14 @@
       const [selectedProfile, setSelectedProfile] = useState(null); 
       const [peopleProfiles, setPeopleProfiles] = useState({});
       const [topicsWiki, setTopicsWiki] = useState({}); 
-      
-      const [chatMessages, setChatMessages] = useState([INITIAL_CHAT_MESSAGE]);
 
       const mainRef = useRef(null); 
       
       const tabClickCountRef = useRef(0);
       const tabClickTimeoutRef = useRef(null);
-      const scrollPositions = useRef({ home: 0, calendar: 0, search: 0, insights: 0, chat: 0 });
+      const scrollPositions = useRef({ home: 0, calendar: 0, search: 0, insights: 0 });
       
-      const [tabResetKeys, setTabResetKeys] = useState({ calendar: 0, insights: 0, chat: 0 });
+      const [tabResetKeys, setTabResetKeys] = useState({ calendar: 0, insights: 0 });
 
       const todayStr = useMemo(() => {
         const today = new Date();
@@ -456,18 +453,6 @@
                 todayStr={todayStr}
               />
             )}
-            {activeTab === 'chat' && (
-              <ChatTab 
-                messages={chatMessages}
-                setMessages={setChatMessages}
-                saveEntry={saveEntry}
-                todayStr={todayStr}
-                onGoToHome={() => {
-                  setViewingDateStr(todayStr);
-                  setActiveTab('home');
-                }}
-              />
-            )}
           </main>
 
           <nav className="w-full bg-white border-t border-gray-200 flex justify-around items-center h-16 pb-safe shrink-0 z-40">
@@ -486,10 +471,6 @@
             <button onClick={() => handleTabClick('insights')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'insights' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
               <i className="fas fa-chart-pie text-xl"></i>
               <span className="text-[10px] font-medium">振り返り</span>
-            </button>
-            <button onClick={() => handleTabClick('chat')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'chat' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
-              <i className="fas fa-robot text-xl"></i>
-              <span className="text-[10px] font-medium">AIチャット</span>
             </button>
           </nav>
 
@@ -1290,8 +1271,8 @@
       const [viewMode, setViewMode] = useState('monthly'); 
       
       const { onTouchStart, onTouchEnd } = useSwipe(
-        () => setViewMode(prev => prev === 'monthly' ? 'all' : prev === 'all' ? 'ai' : 'ai'),
-        () => setViewMode(prev => prev === 'ai' ? 'all' : prev === 'all' ? 'monthly' : 'monthly')
+        () => setViewMode(prev => prev === 'monthly' ? 'all' : 'monthly'),
+        () => setViewMode(prev => prev === 'all' ? 'monthly' : 'all')
       );
 
       useEffect(() => {
@@ -1320,24 +1301,16 @@
               >
                 全期間
               </button>
-              <button 
-                onClick={() => setViewMode('ai')} 
-                className={`flex-1 py-2 text-[11px] sm:text-xs font-bold rounded-lg transition-all flex justify-center items-center ${viewMode === 'ai' ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                <i className="fas fa-sparkles mr-1"></i> AI分析
-              </button>
             </div>
           </div>
 
           <div className="mt-4">
             {viewMode === 'monthly' ? (
               <MonthlyInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} resetKey={resetKey} />
-            ) : viewMode === 'all' ? (
+            ) : (
               <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
                 <AllTimeInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} todayStr={todayStr} />
               </div>
-            ) : (
-              <AiInsights entries={entries} />
             )}
           </div>
         </div>
@@ -1574,291 +1547,6 @@
                 })}
               </ul>
             ) : <p className="text-gray-400 text-sm text-center py-4">データがありません</p>}
-          </div>
-        </div>
-      );
-    }
-
-    function AiInsights({ entries }) {
-      const [insight, setInsight] = useState(null);
-      const [loading, setLoading] = useState(false);
-
-      const generateInsight = async () => {
-        setLoading(true);
-        try {
-          const response = await fetch(GAS_WEB_APP_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ type: 'ai_analyze' }),
-          });
-          const data = await response.json();
-          if (data.status === 'success') {
-            setInsight(data.text);
-          } else {
-            alert('エラーが発生しました: ' + data.message);
-          }
-        } catch(e) {
-          alert('通信エラーが発生しました');
-        }
-        setLoading(false);
-      };
-
-      return (
-        <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 animate-fade-in">
-          <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-sparkles text-purple-500 mr-2"></i> パーソナルAI分析</h3>
-          
-          {!insight && !loading && (
-            <div className="text-center py-8">
-              <div className="w-16 h-16 bg-purple-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <i className="fas fa-brain text-2xl text-purple-500"></i>
-              </div>
-              <p className="text-sm text-gray-500 mb-6 px-2">あなたの日記データをAIが読み込み、<br/>行動の傾向や交友関係のリマインド、<br/>これからの過ごし方を提案します。</p>
-              <button onClick={generateInsight} className="bg-gradient-to-r from-purple-500 to-indigo-500 text-white font-bold py-3 px-6 rounded-2xl shadow-md hover:opacity-90 active:scale-95 transition-all">
-                分析を開始する
-              </button>
-            </div>
-          )}
-          
-          {loading && (
-            <div className="text-center py-12">
-              <i className="fas fa-spinner fa-spin text-4xl text-purple-500 mb-4"></i>
-              <p className="text-sm text-gray-500 font-bold animate-pulse">過去の思い出を読み込み中...</p>
-            </div>
-          )}
-          
-          {insight && !loading && (
-            <div>
-              <div className="text-[14px] text-gray-700 leading-relaxed space-y-2 markdown-body" dangerouslySetInnerHTML={parseMarkdown(insight)} />
-              <button onClick={generateInsight} className="mt-8 w-full text-center text-sm font-bold text-purple-600 bg-purple-50 hover:bg-purple-100 py-3 rounded-xl transition-colors active:scale-95">
-                <i className="fas fa-redo-alt mr-2"></i>もう一度分析する
-              </button>
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    function ChatTab({ messages, setMessages, saveEntry, todayStr, onGoToHome }) {
-      const [input, setInput] = useState('');
-      const [attachedImages, setAttachedImages] = useState([]);
-      const [loading, setLoading] = useState(false);
-      const [generatingDiary, setGeneratingDiary] = useState(false);
-      const messagesEndRef = useRef(null);
-
-      const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      };
-
-      useEffect(() => {
-        scrollToBottom();
-      }, [messages, loading]);
-
-      const handleImageSelect = async (e) => {
-        const files = Array.from(e.target.files);
-        const processed = await Promise.all(files.map(compressImage));
-        setAttachedImages(prev => [...prev, ...processed]);
-      };
-
-      const handleSend = async () => {
-        if ((!input.trim() && attachedImages.length === 0) || loading) return;
-        const userText = input.trim();
-        const imagesToSend = [...attachedImages];
-        setInput('');
-        setAttachedImages([]);
-        
-        const historyText = messages.map(m => `${m.role === 'user' ? 'なおくん' : 'AI'}: ${m.text}`).join('\n');
-        
-        setMessages(prev => [...prev, { role: 'user', text: userText, images: imagesToSend }]);
-        setLoading(true);
-
-        try {
-          const response = await fetch(GAS_WEB_APP_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ type: 'ai_chat', query: userText, images: imagesToSend, chatHistoryText: historyText }),
-          });
-          const data = await response.json();
-          if (data.status === 'success') {
-            setMessages(prev => [...prev, { role: 'ai', text: data.text }]);
-          } else {
-            setMessages(prev => [...prev, { role: 'ai', text: 'エラーが発生しました: ' + data.message }]);
-          }
-        } catch(e) {
-          setMessages(prev => [...prev, { role: 'ai', text: '通信エラーが発生しました。' }]);
-        }
-        setLoading(false);
-      };
-
-      const handleRecordDiary = async () => {
-        if (messages.length <= 1) return;
-        setGeneratingDiary(true);
-        const historyText = messages.slice(1).map(m => `${m.role === 'user' ? 'なおくん' : 'AI'}: ${m.text}`).join('\n');
-        
-        try {
-          const response = await fetch(GAS_WEB_APP_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ type: 'chat_to_diary', history: historyText }),
-          });
-          const data = await response.json();
-          
-          if (data.status === 'success') {
-            const { what1: generatedText } = data.data;
-            
-            // アプリで保持している最新の今日の日記データを取得
-            const existingEntry = entries.find(e => e.when === todayStr) || {};
-            
-            let newTopic1 = existingEntry.topic1 || '';
-            let newWhat1 = existingEntry.what1 || '';
-            let newTopic2 = existingEntry.topic2 || '';
-            let newWhat2 = existingEntry.what2 || '';
-            let newTwitterUrl = existingEntry.twitterUrl || '';
-
-            // 空いているトピック枠にAIの文章を入れる
-            if (!newWhat1 && !newTopic1) {
-              newWhat1 = generatedText || '';
-            } else if (!newWhat2 && !newTopic2) {
-              newWhat2 = generatedText || '';
-            } else {
-              // 両方埋まっている場合はトピック2に追記する
-              newWhat2 = newWhat2 + (newWhat2 ? '\n\n' : '') + (generatedText || '');
-            }
-
-            const rawJson = JSON.stringify({ what1: newWhat1, what2: newWhat2, twitterUrl: newTwitterUrl });
-            
-            const displayParts = [];
-            if (newTopic1 || newWhat1) displayParts.push(newTopic1 ? `【${newTopic1}】\n${newWhat1}` : newWhat1);
-            if (newTopic2 || newWhat2) displayParts.push(newTopic2 ? `【${newTopic2}】\n${newWhat2}` : newWhat2);
-            let displayText = displayParts.join('\n\n');
-            if (newTwitterUrl) displayText += (displayText ? '\n\n' : '') + newTwitterUrl;
-            
-            const whatToSave = displayText + `<!--RAW-->${rawJson}`;
-            const topicToSave = [newTopic1, newTopic2].filter(Boolean).join(',');
-
-            // 既存の画像を優先し、空き枠（最大4枚）にのみチャットの画像を追加する
-            const existingImages = existingEntry.images || [];
-            const chatImages = messages.flatMap(m => m.images || []);
-            const imagesToSave = [...existingImages, ...chatImages].slice(0, 4);
-
-            await saveEntry({
-              when: todayStr,
-              where: existingEntry.where || '', // 既存の場所を維持
-              withWhom: existingEntry.withWhom || '', // 既存の人を維持
-              images: imagesToSave,
-              topic1: newTopic1,
-              what1: newWhat1,
-              topic2: newTopic2,
-              what2: newWhat2,
-              twitterUrl: newTwitterUrl,
-              what: whatToSave,
-              topic: topicToSave
-            });
-            
-            alert('今日の日記に記録しました！');
-            onGoToHome();
-          } else {
-            alert('エラーが発生しました: ' + data.message);
-          }
-        } catch(e) {
-          alert('通信エラーが発生しました。');
-        }
-        setGeneratingDiary(false);
-      };
-
-      const handleResetChat = () => {
-        setMessages([INITIAL_CHAT_MESSAGE]);
-      };
-
-      return (
-        <div className="flex flex-col h-full bg-gray-50 w-full relative animate-fade-in">
-          <div className="sticky top-0 bg-white/95 backdrop-blur-md z-10 px-4 py-4 border-b border-gray-100 flex items-center justify-center shadow-sm">
-            <h2 className="font-bold text-gray-800 tracking-tight flex items-center">
-              <img src="https://unavatar.io/twitter/noki_test1986" className="w-6 h-6 rounded-full mr-2 object-cover border border-gray-200" alt="AI" />
-              思い出AIチャット
-            </h2>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto p-4 space-y-5 pb-[90px] w-full">
-            {messages.map((msg, i) => (
-              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                {msg.role === 'ai' && <img src="https://unavatar.io/twitter/noki_test1986" className="w-8 h-8 rounded-full object-cover mr-2 shrink-0 border border-gray-200" alt="AI" />}
-                <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm flex flex-col ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm'}`}>
-                   {msg.images && msg.images.length > 0 && (
-                     <div className="flex flex-wrap gap-1 mb-2">
-                       {msg.images.map((img, idx) => (
-                         <img key={idx} src={img} className="w-20 h-20 object-cover rounded-lg border border-black/10 shadow-sm" />
-                       ))}
-                     </div>
-                   )}
-                   {msg.text && <div className="markdown-body text-inherit" dangerouslySetInnerHTML={parseMarkdown(msg.text)} />}
-                </div>
-              </div>
-            ))}
-            {loading && (
-              <div className="flex justify-start">
-                <img src="https://unavatar.io/twitter/noki_test1986" className="w-8 h-8 rounded-full object-cover mr-2 shrink-0 border border-gray-200" alt="AI" />
-                <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm flex items-center">
-                  <i className="fas fa-ellipsis-h fa-fade text-gray-400"></i>
-                </div>
-              </div>
-            )}
-            
-            {messages.length > 1 && !loading && (
-              <div className="flex flex-col items-center mt-6 animate-fade-in gap-3">
-                <button 
-                  onClick={handleRecordDiary} 
-                  disabled={generatingDiary}
-                  className="w-full max-w-xs bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-bold py-3 px-6 rounded-2xl shadow-md hover:opacity-90 active:scale-95 transition-all flex justify-center items-center"
-                >
-                  {generatingDiary ? <i className="fas fa-spinner fa-spin mr-2"></i> : <i className="fas fa-book mr-2"></i>}
-                  {generatingDiary ? '記録を生成中...' : 'この内容を今日の日記に記録する'}
-                </button>
-                <button 
-                  onClick={handleResetChat} 
-                  disabled={generatingDiary}
-                  className="text-sm text-gray-400 hover:text-gray-600 font-bold py-2 px-4 transition-colors active:scale-95 flex items-center"
-                >
-                  <i className="fas fa-trash-alt mr-2"></i> このチャットを終了
-                </button>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          <div className="fixed bottom-16 left-0 w-full bg-gray-50 border-t border-gray-200 p-3 z-20" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
-            <div className="max-w-lg mx-auto flex flex-col gap-2">
-              {attachedImages.length > 0 && (
-                <div className="flex gap-2 p-2 overflow-x-auto bg-white rounded-xl border border-gray-200 shadow-sm mx-1">
-                  {attachedImages.map((img, i) => (
-                    <div key={i} className="relative w-14 h-14 shrink-0 rounded-lg overflow-hidden border border-gray-100">
-                      <img src={img} className="w-full h-full object-cover" />
-                      <button onClick={() => setAttachedImages(prev => prev.filter((_, idx) => idx !== i))} className="absolute top-1 right-1 bg-black/60 text-white rounded-full w-4 h-4 flex items-center justify-center text-[8px] hover:bg-black transition-colors"><i className="fas fa-times"></i></button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="flex items-center gap-2 bg-white rounded-full border border-gray-200 p-1 pl-2 shadow-sm">
-                <label className="text-gray-400 hover:text-blue-500 cursor-pointer p-2 shrink-0 flex items-center justify-center transition-colors">
-                  <i className="fas fa-image text-lg"></i>
-                  <input type="file" accept="image/*" multiple onChange={handleImageSelect} className="hidden" />
-                </label>
-                <input 
-                  type="text" 
-                  value={input} 
-                  onChange={e => setInput(e.target.value)} 
-                  onKeyDown={e => { if(e.key === 'Enter') { e.preventDefault(); handleSend(); } }}
-                  placeholder="画像や思い出を送る..." 
-                  className="flex-1 bg-transparent outline-none text-sm"
-                />
-                <button 
-                  onClick={handleSend} 
-                  disabled={(!input.trim() && attachedImages.length === 0) || loading}
-                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shrink-0 ${input.trim() || attachedImages.length > 0 ? 'bg-blue-600 text-white shadow-md active:scale-95' : 'bg-gray-100 text-gray-300'}`}
-                >
-                  <i className="fas fa-paper-plane text-sm"></i>
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       );
