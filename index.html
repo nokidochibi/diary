@@ -129,6 +129,37 @@
       return str;
     };
 
+    const compressImage = (file) => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 600; 
+            const MAX_HEIGHT = 600;
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+              if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+            } else {
+              if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
+            }
+            canvas.width = width; canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.6));
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    };
+
+    // ==========================================
+    // 共通コンポーネント
+    // ==========================================
     function TagList({ places, people, onOpenProfile, peopleProfiles = {} }) {
       if (!places?.length && !people?.length) return null;
       return (
@@ -186,34 +217,9 @@
       );
     }
 
-    const compressImage = (file) => {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const img = new Image();
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const MAX_WIDTH = 600; 
-            const MAX_HEIGHT = 600;
-            let width = img.width;
-            let height = img.height;
-
-            if (width > height) {
-              if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
-            } else {
-              if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
-            }
-            canvas.width = width; canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', 0.6));
-          };
-          img.src = e.target.result;
-        };
-        reader.readAsDataURL(file);
-      });
-    };
-
+    // ==========================================
+    // メインアプリケーション
+    // ==========================================
     function App() {
       const [activeTab, setActiveTab] = useState('home');
       const [searchQuery, setSearchQuery] = useState('');
@@ -424,7 +430,6 @@
             )}
           </main>
 
-          {/* ナビゲーションを5等分に変更 */}
           <nav className="w-full bg-white border-t border-gray-200 flex justify-around items-center h-16 pb-safe shrink-0 z-40">
             <button onClick={() => handleTabClick('home')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'home' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
               <i className="fas fa-pen-to-square text-xl"></i>
@@ -464,416 +469,9 @@
     }
 
     // ==========================================
-    // AIチャットタブ
-    // ==========================================
-    function ChatTab({ resetKey }) {
-      const initialMessage = { role: 'ai', text: 'こんにちは！あなたの日記をすべて読み込みました。思い出について何でも聞いてください。(*例：最近Aさんとどこに行ったっけ？、去年の秋は何をしてた？*)' };
-      const [messages, setMessages] = useState([initialMessage]);
-      const [input, setInput] = useState('');
-      const [loading, setLoading] = useState(false);
-      const messagesEndRef = useRef(null);
-
-      const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      };
-
-      useEffect(() => {
-        scrollToBottom();
-      }, [messages, loading]);
-
-      useEffect(() => {
-        if(resetKey > 0) {
-          setMessages([initialMessage]);
-        }
-      }, [resetKey]);
-
-      const handleSend = async () => {
-        if (!input.trim() || loading) return;
-        const userText = input.trim();
-        setInput('');
-        setMessages(prev => [...prev, { role: 'user', text: userText }]);
-        setLoading(true);
-
-        try {
-          const response = await fetch(GAS_WEB_APP_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ type: 'ai_chat', query: userText }),
-          });
-          const data = await response.json();
-          if (data.status === 'success') {
-            setMessages(prev => [...prev, { role: 'ai', text: data.text }]);
-          } else {
-            setMessages(prev => [...prev, { role: 'ai', text: 'エラーが発生しました: ' + data.message }]);
-          }
-        } catch(e) {
-          setMessages(prev => [...prev, { role: 'ai', text: '通信エラーが発生しました。' }]);
-        }
-        setLoading(false);
-      };
-
-      return (
-        <div className="flex flex-col h-full bg-gray-50 w-full relative animate-fade-in">
-          <div className="sticky top-0 bg-white/95 backdrop-blur-md z-10 px-4 py-4 border-b border-gray-100 flex items-center justify-center shadow-sm">
-            <h2 className="font-bold text-gray-800 tracking-tight"><i className="fas fa-robot text-blue-500 mr-2"></i>思い出AIチャット</h2>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto p-4 space-y-5 pb-[90px] w-full">
-            {messages.map((msg, i) => (
-              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                {msg.role === 'ai' && <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-500 flex items-center justify-center mr-2 shrink-0"><i className="fas fa-robot text-xs"></i></div>}
-                <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed markdown-body shadow-sm ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm'}`}>
-                   <span dangerouslySetInnerHTML={parseMarkdown(msg.text)} />
-                </div>
-              </div>
-            ))}
-            {loading && (
-              <div className="flex justify-start">
-                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-500 flex items-center justify-center mr-2 shrink-0"><i className="fas fa-robot text-xs"></i></div>
-                <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm flex items-center">
-                  <i className="fas fa-ellipsis-h fa-fade text-gray-400"></i>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          <div className="fixed bottom-16 left-0 w-full bg-gray-50 border-t border-gray-200 p-3 z-20" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
-            <div className="flex items-center gap-2 bg-white rounded-full border border-gray-200 p-1 pl-4 shadow-sm max-w-lg mx-auto">
-              <input 
-                type="text" 
-                value={input} 
-                onChange={e => setInput(e.target.value)} 
-                onKeyDown={e => { if(e.key === 'Enter') { e.preventDefault(); handleSend(); } }}
-                placeholder="日記の思い出を質問する..." 
-                className="flex-1 bg-transparent outline-none text-sm"
-              />
-              <button 
-                onClick={handleSend} 
-                disabled={!input.trim() || loading}
-                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${input.trim() && !loading ? 'bg-blue-600 text-white shadow-md active:scale-95' : 'bg-gray-100 text-gray-300'}`}
-              >
-                <i className="fas fa-paper-plane text-sm"></i>
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // ==========================================
-    // 既存のコンポーネント (ProfileModal, HomeTab, CalendarTab, SearchTab, MonthCalendar 等は以前と同じ)
-    // ※文字数制限の都合上、AIに関連しない部分は省略せず、ご自身の元のコードを維持してください。
-    // 以下にInsightsTabのみ更新したものを記載します。
+    // 各タブ・モーダルのコンポーネント
     // ==========================================
 
-    function ProfileModal({ profile, entries, onClose, onOpenProfile, onSelectDate, peopleProfiles, updatePersonProfile }) {
-      if (!profile) return null;
-      const { type, name } = profile;
-      const isPerson = type === 'person';
-      
-      const personProfile = isPerson ? (peopleProfiles[name] || {}) : null;
-      const xUsername = personProfile?.xUsername;
-      
-      const [editX, setEditX] = useState(false);
-      const [xInput, setXInput] = useState(xUsername || '');
-      const [isSavingX, setIsSavingX] = useState(false);
-
-      useEffect(() => {
-        setXInput(xUsername || '');
-      }, [xUsername]);
-
-      const handleSaveX = async () => {
-        setIsSavingX(true);
-        const username = extractXUsername(xInput);
-        if (username) {
-          await updatePersonProfile(name, { xUsername: username });
-        } else {
-          await updatePersonProfile(name, { xUsername: null });
-        }
-        setIsSavingX(false);
-        setEditX(false);
-      };
-      
-      const colorClass = isPerson ? 'from-orange-400 to-orange-500' : 'from-green-400 to-green-500';
-      const textClass = isPerson ? 'text-orange-600' : 'text-green-600';
-      const icon = isPerson ? 'fa-user' : 'fa-map-marker-alt';
-
-      const relatedEntries = useMemo(() => {
-        return entries.filter(e => {
-          if (type === 'person') return splitTags(e.withWhom).includes(name);
-          if (type === 'place') return splitTags(e.where).includes(name);
-          return false;
-        }).sort((a, b) => new Date(b.when) - new Date(a.when));
-      }, [entries, type, name]);
-
-      const stats = useMemo(() => {
-        if (relatedEntries.length === 0) return null;
-        const firstDate = relatedEntries[relatedEntries.length - 1].when;
-        const daysCount = relatedEntries.length;
-        
-        const relatedMap = {};
-        
-        relatedEntries.forEach(e => {
-          const tags = type === 'person' ? splitTags(e.where) : splitTags(e.withWhom);
-          tags.forEach(t => {
-            relatedMap[t] = (relatedMap[t] || 0) + 1;
-          });
-        });
-        
-        const topRelated = Object.entries(relatedMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
-        
-        return { firstDate, daysCount, topRelated };
-      }, [relatedEntries, type]);
-
-      return (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center animate-fade-in" onClick={onClose}>
-          <div 
-            className="bg-gray-50 w-full h-[100dvh] max-w-lg sm:h-[90vh] sm:rounded-2xl overflow-hidden flex flex-col shadow-2xl animate-slide-up"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className={`p-6 pb-5 bg-gradient-to-br ${colorClass} text-white relative`}>
-              <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 bg-black/20 hover:bg-black/30 rounded-full flex items-center justify-center transition-colors">
-                <i className="fas fa-times"></i>
-              </button>
-              <div className="flex items-start gap-4 mt-2">
-                <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-3xl backdrop-blur-sm border border-white/30 shadow-inner overflow-hidden flex-shrink-0">
-                  {isPerson && xUsername ? (
-                    <img src={`https://unavatar.io/twitter/${xUsername}`} className="w-full h-full object-cover" />
-                  ) : (
-                    <i className={`fas ${icon}`}></i>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs opacity-90 font-medium mb-0.5 tracking-wider uppercase">{isPerson ? 'Profile' : 'Location'}</p>
-                  <h2 className="text-2xl font-bold leading-tight break-words">{name}</h2>
-                  
-                  {isPerson && (
-                    <div className="mt-2">
-                      {editX ? (
-                        <div className="flex gap-1 items-center bg-white/10 p-1 rounded-lg backdrop-blur-md">
-                          <input type="text" value={xInput} onChange={e=>setXInput(e.target.value)} placeholder="XのURL or @ID" className="text-gray-800 text-xs p-1.5 rounded-md flex-1 outline-none border-none" disabled={isSavingX}/>
-                          <button onClick={handleSaveX} disabled={isSavingX} className={`bg-white text-orange-500 px-3 py-1.5 rounded-md text-xs font-bold active:scale-95 ${isSavingX ? 'opacity-50' : ''}`}>{isSavingX ? '保存中...' : '保存'}</button>
-                        </div>
-                      ) : (
-                        xUsername ? (
-                          <div className="inline-flex items-center gap-1.5 text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded-lg cursor-pointer backdrop-blur-sm transition-colors border border-white/20" onClick={()=>setEditX(true)}>
-                            <i className="fab fa-twitter"></i> @{xUsername} <i className="fas fa-pen ml-1 text-[10px] opacity-70"></i>
-                          </div>
-                        ) : (
-                          <button onClick={()=>setEditX(true)} className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full backdrop-blur-sm transition-colors border border-white/20">
-                            <i className="fab fa-twitter mr-1"></i> Xアカウントを紐付け
-                          </button>
-                        )
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto overflow-x-hidden w-full p-5 space-y-6 pb-10">
-              {stats ? (
-                <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 text-center">
-                      <p className="text-[10px] text-gray-400 font-bold mb-1">思い出の日数</p>
-                      <p className={`text-3xl font-bold ${textClass}`}>{stats.daysCount} <span className="text-sm text-gray-400 font-medium ml-1">日</span></p>
-                    </div>
-                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 text-center flex flex-col justify-center">
-                      <p className="text-[10px] text-gray-400 font-bold mb-1">はじめての記録</p>
-                      <p className="text-lg font-bold text-gray-700">{stats.firstDate.replace(/-/g, '/')}</p>
-                    </div>
-                  </div>
-
-                  {stats.topRelated.length > 0 && (
-                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                      <h3 className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wider">
-                        <i className={`fas ${isPerson ? 'fa-map-marker-alt' : 'fa-users'} mr-2`}></i>
-                        よく一緒に{isPerson ? '行くお店' : 'いる人'}
-                      </h3>
-                      <div className="flex flex-wrap gap-2">
-                        {stats.topRelated.map(([relName, count], idx) => (
-                          <button 
-                            key={idx} 
-                            onClick={() => onOpenProfile({ type: isPerson ? 'place' : 'person', name: relName })}
-                            className={`px-3 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 text-xs font-bold rounded-xl border border-gray-200 flex items-center gap-1 active:scale-95 transition-transform`}
-                          >
-                            <span>{relName}</span>
-                            <span className="opacity-40 font-normal ml-1">{count}回</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div>
-                    <h3 className="text-xs font-bold text-gray-500 mb-3 ml-1 uppercase tracking-wider"><i className="fas fa-history mr-2"></i>History</h3>
-                    <div className="space-y-4">
-                      {relatedEntries.map((entry, idx) => (
-                        <div key={idx} className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100">
-                          <div className="flex justify-between items-center mb-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-bold text-blue-600">{entry.when.replace(/-/g, '/')} <span className="text-xs">({getDayOfWeek(entry.when)})</span></span>
-                              <button onClick={() => { onSelectDate(entry.when); onClose(); }} className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors active:scale-95"><i className="fas fa-pen mr-1"></i>編集</button>
-                            </div>
-                          </div>
-
-                          {entry.images && entry.images.length > 0 && (
-                            <div className="flex gap-1 w-full mb-3">
-                              {entry.images.slice(0, 4).map((img, i) => (
-                                <div key={`modal-img-${idx}-${i}`} className="flex-1 aspect-square rounded-xl overflow-hidden bg-gray-50 border border-gray-100 shadow-sm">
-                                  <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {entry.what && <p className="text-gray-700 text-[13px] whitespace-pre-wrap break-words leading-relaxed mb-3">{entry.what}</p>}
-                          <TagList 
-                            places={splitTags(entry.where).filter(p => !(!isPerson && p === name))} 
-                            people={splitTags(entry.withWhom).filter(p => !(isPerson && p === name))} 
-                            onOpenProfile={onOpenProfile} 
-                            peopleProfiles={peopleProfiles}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="text-center py-12 text-gray-400">データがありません</div>
-              )}
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // ==========================================
-    // インサイト（振り返り）タブ （★AIモードを追加）
-    // ==========================================
-    function InsightsTab({ entries, onOpenProfile, peopleProfiles, resetKey, todayStr }) {
-      const [viewMode, setViewMode] = useState('monthly'); // 'monthly' | 'all' | 'ai'
-      
-      const { onTouchStart, onTouchEnd } = useSwipe(
-        () => setViewMode(prev => prev === 'monthly' ? 'all' : prev === 'all' ? 'ai' : 'ai'),
-        () => setViewMode(prev => prev === 'ai' ? 'all' : prev === 'all' ? 'monthly' : 'monthly')
-      );
-
-      useEffect(() => {
-        if (resetKey > 0) {
-          setViewMode('monthly');
-        }
-      }, [resetKey]);
-
-      return (
-        <div className="p-4 max-w-lg mx-auto animate-fade-in bg-gray-50 min-h-screen">
-          <div 
-            className="pt-4 pb-4 sticky top-0 bg-gray-50/95 backdrop-blur-sm z-10"
-            onTouchStart={onTouchStart} 
-            onTouchEnd={onTouchEnd}
-          >
-            <div className="flex bg-gray-200 p-1 rounded-xl">
-              <button 
-                onClick={() => setViewMode('monthly')} 
-                className={`flex-1 py-2 text-[11px] sm:text-xs font-bold rounded-lg transition-all ${viewMode === 'monthly' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                月間ハイライト
-              </button>
-              <button 
-                onClick={() => setViewMode('all')} 
-                className={`flex-1 py-2 text-[11px] sm:text-xs font-bold rounded-lg transition-all ${viewMode === 'all' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                全期間
-              </button>
-              <button 
-                onClick={() => setViewMode('ai')} 
-                className={`flex-1 py-2 text-[11px] sm:text-xs font-bold rounded-lg transition-all flex justify-center items-center ${viewMode === 'ai' ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                <i className="fas fa-sparkles mr-1"></i> AI分析
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-4">
-            {viewMode === 'monthly' ? (
-              <MonthlyInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} resetKey={resetKey} />
-            ) : viewMode === 'all' ? (
-              <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-                <AllTimeInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} todayStr={todayStr} />
-              </div>
-            ) : (
-              <AiInsights entries={entries} />
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    // AIインサイト用コンポーネント
-    function AiInsights({ entries }) {
-      const [insight, setInsight] = useState(null);
-      const [loading, setLoading] = useState(false);
-
-      const generateInsight = async () => {
-        setLoading(true);
-        try {
-          const response = await fetch(GAS_WEB_APP_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ type: 'ai_analyze' }),
-          });
-          const data = await response.json();
-          if (data.status === 'success') {
-            setInsight(data.text);
-          } else {
-            alert('エラーが発生しました: ' + data.message);
-          }
-        } catch(e) {
-          alert('通信エラーが発生しました');
-        }
-        setLoading(false);
-      };
-
-      return (
-        <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 animate-fade-in">
-          <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-sparkles text-purple-500 mr-2"></i> パーソナルAI分析</h3>
-          
-          {!insight && !loading && (
-            <div className="text-center py-8">
-              <div className="w-16 h-16 bg-purple-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <i className="fas fa-brain text-2xl text-purple-500"></i>
-              </div>
-              <p className="text-sm text-gray-500 mb-6 px-2">あなたの日記データをAIが読み込み、<br/>行動の傾向や交友関係のリマインド、<br/>これからの過ごし方を提案します。</p>
-              <button onClick={generateInsight} className="bg-gradient-to-r from-purple-500 to-indigo-500 text-white font-bold py-3 px-6 rounded-2xl shadow-md hover:opacity-90 active:scale-95 transition-all">
-                分析を開始する
-              </button>
-            </div>
-          )}
-          
-          {loading && (
-            <div className="text-center py-12">
-              <i className="fas fa-spinner fa-spin text-4xl text-purple-500 mb-4"></i>
-              <p className="text-sm text-gray-500 font-bold animate-pulse">過去の思い出を読み込み中...</p>
-            </div>
-          )}
-          
-          {insight && !loading && (
-            <div>
-              <div className="text-[14px] text-gray-700 leading-relaxed space-y-2 markdown-body" dangerouslySetInnerHTML={parseMarkdown(insight)} />
-              <button onClick={generateInsight} className="mt-8 w-full text-center text-sm font-bold text-purple-600 bg-purple-50 hover:bg-purple-100 py-3 rounded-xl transition-colors active:scale-95">
-                <i className="fas fa-redo-alt mr-2"></i>もう一度分析する
-              </button>
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    // ==========================================
-    // 入力タブ
-    // ==========================================
     function HomeTab({ viewingDateStr, setViewingDateStr, todayStr, entries, onSave, isGasLinked, onOpenProfile, peopleProfiles }) {
       const [what, setWhat] = useState('');
       const [where, setWhere] = useState('');
@@ -1174,9 +772,6 @@
       );
     }
 
-    // ==========================================
-    // カレンダータブ
-    // ==========================================
     function CalendarTab({ entries, todayStr, onSelectDate, onOpenProfile, peopleProfiles, resetKey, mainRef }) {
       const currentYear = new Date(todayStr).getFullYear();
       const [years, setYears] = useState(() => Array.from({ length: 11 }, (_, i) => currentYear - 10 + i));
@@ -1200,8 +795,6 @@
       const bottomObserverRef = useRef(null);
       const currentYearRef = useRef(null);
 
-      // 【抜本的修正】「今日」または「今年のブロック」が確実に見えるよう中央にスクロール
-      // iOS Safariの長距離スクロールバグを防ぐため、座標計算方式に変更
       const scrollToCenter = useCallback((behavior = 'smooth') => {
         const todayEl = document.getElementById('today-calendar-btn');
         const yearEl = document.getElementById('current-year-container');
@@ -1215,7 +808,6 @@
           const relativeTop = targetRect.top - containerRect.top;
           const targetScrollTop = container.scrollTop + relativeTop - (containerRect.height / 2) + (targetRect.height / 2);
           
-          // 移動距離が長すぎる場合はバグ回避のため強制的に auto (一瞬で移動) にする
           const distance = Math.abs(targetScrollTop - container.scrollTop);
           const finalBehavior = (behavior === 'smooth' && distance > 2000) ? 'auto' : behavior;
 
@@ -1223,7 +815,6 @@
         }
       }, [mainRef]);
 
-      // 初回表示時
       useEffect(() => {
         const timer = setTimeout(() => {
           if (mainRef && mainRef.current && mainRef.current.scrollTop === 0) {
@@ -1233,7 +824,6 @@
         return () => clearTimeout(timer);
       }, [scrollToCenter, mainRef]);
 
-      // 2タップ目リセット用
       useEffect(() => {
         if (resetKey > 0) {
           scrollToCenter('smooth');
@@ -1275,7 +865,6 @@
           <div ref={topObserverRef} className="h-1 w-full"></div>
 
           {years.map(year => (
-            // 【抜本的修正】 bg-white と z-30 を設定し、透けずにロケット鉛筆になる構造
             <div key={year} id={year === currentYear ? 'current-year-container' : undefined} ref={year === currentYear ? currentYearRef : null} className="relative">
               <div className="sticky top-0 bg-white z-30 px-3 py-2 border-b border-gray-200 shadow-sm">
                 <h1 className="text-xl sm:text-2xl font-bold text-red-500 tracking-tighter text-center">{year}年</h1>
@@ -1290,7 +879,6 @@
 
           <div ref={bottomObserverRef} className="h-1 w-full"></div>
 
-          {/* モーダル */}
           {selectedDate && (
             <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 animate-fade-in" onClick={() => setSelectedDate(null)}>
               <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-xl animate-zoom-in max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
@@ -1311,7 +899,7 @@
                         </div>
                       )}
 
-                      <p className="text-gray-800 whitespace-pre-wrap break-words text-[15px] leading-relaxed mb-4">{selectedEntry.what}</p>
+                      <p className="text-gray-800 whitespace-pre-wrap text-[15px] leading-relaxed mb-4">{selectedEntry.what}</p>
 
                       {tweetUrls.length > 0 && (
                         <div className="flex flex-col gap-2 mb-4">
@@ -1372,9 +960,6 @@
       );
     }
 
-    // ==========================================
-    // 検索タブ
-    // ==========================================
     function SearchTab({ entries, onOpenProfile, onSelectDate, peopleProfiles, query, setQuery, filterTag, setFilterTag }) {
       const popularPeople = useMemo(() => {
         const map = {};
@@ -1515,24 +1100,17 @@
       );
     }
 
-    // ==========================================
-    // インサイト（振り返り）タブ
-    // ==========================================
     function InsightsTab({ entries, onOpenProfile, peopleProfiles, resetKey, todayStr }) {
-      const [viewMode, setViewMode] = useState('monthly'); // 'monthly' | 'all'
-      const [randomJumpKey, setRandomJumpKey] = useState(0);
+      const [viewMode, setViewMode] = useState('monthly'); // 'monthly' | 'all' | 'ai'
       
-      // ヘッダー部等でのスワイプでモードを切り替え
       const { onTouchStart, onTouchEnd } = useSwipe(
-        () => setViewMode('all'),
-        () => setViewMode('monthly')
+        () => setViewMode(prev => prev === 'monthly' ? 'all' : prev === 'all' ? 'ai' : 'ai'),
+        () => setViewMode(prev => prev === 'ai' ? 'all' : prev === 'all' ? 'monthly' : 'monthly')
       );
 
-      // 2タップ目リセット用
       useEffect(() => {
         if (resetKey > 0) {
           setViewMode('monthly');
-          setRandomJumpKey(k => k + 1);
         }
       }, [resetKey]);
 
@@ -1546,33 +1124,41 @@
             <div className="flex bg-gray-200 p-1 rounded-xl">
               <button 
                 onClick={() => setViewMode('monthly')} 
-                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${viewMode === 'monthly' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`flex-1 py-2 text-[11px] sm:text-xs font-bold rounded-lg transition-all ${viewMode === 'monthly' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 月間ハイライト
               </button>
               <button 
                 onClick={() => setViewMode('all')} 
-                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${viewMode === 'all' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`flex-1 py-2 text-[11px] sm:text-xs font-bold rounded-lg transition-all ${viewMode === 'all' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 全期間
+              </button>
+              <button 
+                onClick={() => setViewMode('ai')} 
+                className={`flex-1 py-2 text-[11px] sm:text-xs font-bold rounded-lg transition-all flex justify-center items-center ${viewMode === 'ai' ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                <i className="fas fa-sparkles mr-1"></i> AI分析
               </button>
             </div>
           </div>
 
           <div className="mt-4">
             {viewMode === 'monthly' ? (
-              <MonthlyInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} randomJumpKey={randomJumpKey} />
-            ) : (
+              <MonthlyInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} resetKey={resetKey} />
+            ) : viewMode === 'all' ? (
               <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
                 <AllTimeInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} todayStr={todayStr} />
               </div>
+            ) : (
+              <AiInsights entries={entries} />
             )}
           </div>
         </div>
       );
     }
 
-    function MonthlyInsights({ entries, onOpenProfile, peopleProfiles, randomJumpKey }) {
+    function MonthlyInsights({ entries, onOpenProfile, peopleProfiles, resetKey }) {
       const [targetDate, setTargetDate] = useState(new Date());
 
       const year = targetDate.getFullYear();
@@ -1592,9 +1178,8 @@
         setTargetDate(d);
       };
 
-      // ランダム月ジャンプ用
       useEffect(() => {
-        if (randomJumpKey > 0) {
+        if (resetKey > 0) {
           const monthsWithEntries = [...new Set(entries.filter(e => e.when).map(e => e.when.substring(0, 7)))];
           if (monthsWithEntries.length > 0) {
             const randomMonthStr = monthsWithEntries[Math.floor(Math.random() * monthsWithEntries.length)];
@@ -1606,9 +1191,8 @@
             setTargetDate(d);
           }
         }
-      }, [randomJumpKey, entries]);
+      }, [resetKey, entries]);
 
-      // 月間ハイライト内の左右スワイプによる月移動
       const { onTouchStart, onTouchEnd } = useSwipe(handleNextMonth, handlePrevMonth);
 
       const stats = useMemo(() => {
@@ -1762,20 +1346,18 @@
                   else if (index === 1) badgeClass = "bg-gray-200 text-gray-600";
                   else if (index === 2) badgeClass = "bg-orange-100 text-orange-700";
 
-                  // 会う時期の目安スコアを計算 (2回以上会っている場合のみ)
                   let scoreDisplay = null;
                   if (dates.length >= 2 && todayStr) {
                     const todayDate = new Date(todayStr);
-                    const lastDate = new Date(dates[0]); // 前回
-                    const prevLastDate = new Date(dates[1]); // 前々回
+                    const lastDate = new Date(dates[0]); 
+                    const prevLastDate = new Date(dates[1]); 
                     
                     const msToDays = ms => Math.floor(ms / (1000 * 60 * 60 * 24));
-                    const daysSinceLast = msToDays(todayDate - lastDate); // 前回〜今日
-                    const daysBetween = msToDays(lastDate - prevLastDate); // 前々回〜前回
+                    const daysSinceLast = msToDays(todayDate - lastDate); 
+                    const daysBetween = msToDays(lastDate - prevLastDate); 
                     
                     const score = daysBetween - daysSinceLast;
                     
-                    // マイナス(そろそろ会うべき)なら赤系、プラス(まだ余裕)なら青系
                     const scoreColor = score < 0 ? 'text-red-500 bg-red-50 border-red-100' : 'text-blue-500 bg-blue-50 border-blue-100';
                     const sign = score > 0 ? '+' : '';
                     
@@ -1806,6 +1388,343 @@
                 })}
               </ul>
             ) : <p className="text-gray-400 text-sm text-center py-4">データがありません</p>}
+          </div>
+        </div>
+      );
+    }
+
+    function AiInsights({ entries }) {
+      const [insight, setInsight] = useState(null);
+      const [loading, setLoading] = useState(false);
+
+      const generateInsight = async () => {
+        setLoading(true);
+        try {
+          const response = await fetch(GAS_WEB_APP_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ type: 'ai_analyze' }),
+          });
+          const data = await response.json();
+          if (data.status === 'success') {
+            setInsight(data.text);
+          } else {
+            alert('エラーが発生しました: ' + data.message);
+          }
+        } catch(e) {
+          alert('通信エラーが発生しました');
+        }
+        setLoading(false);
+      };
+
+      return (
+        <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 animate-fade-in">
+          <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-sparkles text-purple-500 mr-2"></i> パーソナルAI分析</h3>
+          
+          {!insight && !loading && (
+            <div className="text-center py-8">
+              <div className="w-16 h-16 bg-purple-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i className="fas fa-brain text-2xl text-purple-500"></i>
+              </div>
+              <p className="text-sm text-gray-500 mb-6 px-2">あなたの日記データをAIが読み込み、<br/>行動の傾向や交友関係のリマインド、<br/>これからの過ごし方を提案します。</p>
+              <button onClick={generateInsight} className="bg-gradient-to-r from-purple-500 to-indigo-500 text-white font-bold py-3 px-6 rounded-2xl shadow-md hover:opacity-90 active:scale-95 transition-all">
+                分析を開始する
+              </button>
+            </div>
+          )}
+          
+          {loading && (
+            <div className="text-center py-12">
+              <i className="fas fa-spinner fa-spin text-4xl text-purple-500 mb-4"></i>
+              <p className="text-sm text-gray-500 font-bold animate-pulse">過去の思い出を読み込み中...</p>
+            </div>
+          )}
+          
+          {insight && !loading && (
+            <div>
+              <div className="text-[14px] text-gray-700 leading-relaxed space-y-2 markdown-body" dangerouslySetInnerHTML={parseMarkdown(insight)} />
+              <button onClick={generateInsight} className="mt-8 w-full text-center text-sm font-bold text-purple-600 bg-purple-50 hover:bg-purple-100 py-3 rounded-xl transition-colors active:scale-95">
+                <i className="fas fa-redo-alt mr-2"></i>もう一度分析する
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function ChatTab({ resetKey }) {
+      const initialMessage = { role: 'ai', text: 'こんにちは！あなたの日記をすべて読み込みました。思い出について何でも聞いてください。(*例：最近Aさんとどこに行ったっけ？、去年の秋は何をしてた？*)' };
+      const [messages, setMessages] = useState([initialMessage]);
+      const [input, setInput] = useState('');
+      const [loading, setLoading] = useState(false);
+      const messagesEndRef = useRef(null);
+
+      const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      };
+
+      useEffect(() => {
+        scrollToBottom();
+      }, [messages, loading]);
+
+      useEffect(() => {
+        if(resetKey > 0) {
+          setMessages([initialMessage]);
+        }
+      }, [resetKey]);
+
+      const handleSend = async () => {
+        if (!input.trim() || loading) return;
+        const userText = input.trim();
+        setInput('');
+        setMessages(prev => [...prev, { role: 'user', text: userText }]);
+        setLoading(true);
+
+        try {
+          const response = await fetch(GAS_WEB_APP_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ type: 'ai_chat', query: userText }),
+          });
+          const data = await response.json();
+          if (data.status === 'success') {
+            setMessages(prev => [...prev, { role: 'ai', text: data.text }]);
+          } else {
+            setMessages(prev => [...prev, { role: 'ai', text: 'エラーが発生しました: ' + data.message }]);
+          }
+        } catch(e) {
+          setMessages(prev => [...prev, { role: 'ai', text: '通信エラーが発生しました。' }]);
+        }
+        setLoading(false);
+      };
+
+      return (
+        <div className="flex flex-col h-full bg-gray-50 w-full relative animate-fade-in">
+          <div className="sticky top-0 bg-white/95 backdrop-blur-md z-10 px-4 py-4 border-b border-gray-100 flex items-center justify-center shadow-sm">
+            <h2 className="font-bold text-gray-800 tracking-tight"><i className="fas fa-robot text-blue-500 mr-2"></i>思い出AIチャット</h2>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-4 space-y-5 pb-[90px] w-full">
+            {messages.map((msg, i) => (
+              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                {msg.role === 'ai' && <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-500 flex items-center justify-center mr-2 shrink-0"><i className="fas fa-robot text-xs"></i></div>}
+                <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed markdown-body shadow-sm ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm'}`}>
+                   <span dangerouslySetInnerHTML={parseMarkdown(msg.text)} />
+                </div>
+              </div>
+            ))}
+            {loading && (
+              <div className="flex justify-start">
+                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-500 flex items-center justify-center mr-2 shrink-0"><i className="fas fa-robot text-xs"></i></div>
+                <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm flex items-center">
+                  <i className="fas fa-ellipsis-h fa-fade text-gray-400"></i>
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          <div className="fixed bottom-16 left-0 w-full bg-gray-50 border-t border-gray-200 p-3 z-20" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
+            <div className="flex items-center gap-2 bg-white rounded-full border border-gray-200 p-1 pl-4 shadow-sm max-w-lg mx-auto">
+              <input 
+                type="text" 
+                value={input} 
+                onChange={e => setInput(e.target.value)} 
+                onKeyDown={e => { if(e.key === 'Enter') { e.preventDefault(); handleSend(); } }}
+                placeholder="日記の思い出を質問する..." 
+                className="flex-1 bg-transparent outline-none text-sm"
+              />
+              <button 
+                onClick={handleSend} 
+                disabled={!input.trim() || loading}
+                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${input.trim() && !loading ? 'bg-blue-600 text-white shadow-md active:scale-95' : 'bg-gray-100 text-gray-300'}`}
+              >
+                <i className="fas fa-paper-plane text-sm"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function ProfileModal({ profile, entries, onClose, onOpenProfile, onSelectDate, peopleProfiles, updatePersonProfile }) {
+      if (!profile) return null;
+      const { type, name } = profile;
+      const isPerson = type === 'person';
+      
+      const personProfile = isPerson ? (peopleProfiles[name] || {}) : null;
+      const xUsername = personProfile?.xUsername;
+      
+      const [editX, setEditX] = useState(false);
+      const [xInput, setXInput] = useState(xUsername || '');
+      const [isSavingX, setIsSavingX] = useState(false);
+
+      useEffect(() => {
+        setXInput(xUsername || '');
+      }, [xUsername]);
+
+      const handleSaveX = async () => {
+        setIsSavingX(true);
+        const username = extractXUsername(xInput);
+        if (username) {
+          await updatePersonProfile(name, { xUsername: username });
+        } else {
+          await updatePersonProfile(name, { xUsername: null });
+        }
+        setIsSavingX(false);
+        setEditX(false);
+      };
+      
+      const colorClass = isPerson ? 'from-orange-400 to-orange-500' : 'from-green-400 to-green-500';
+      const textClass = isPerson ? 'text-orange-600' : 'text-green-600';
+      const icon = isPerson ? 'fa-user' : 'fa-map-marker-alt';
+
+      const relatedEntries = useMemo(() => {
+        return entries.filter(e => {
+          if (type === 'person') return splitTags(e.withWhom).includes(name);
+          if (type === 'place') return splitTags(e.where).includes(name);
+          return false;
+        }).sort((a, b) => new Date(b.when) - new Date(a.when));
+      }, [entries, type, name]);
+
+      const stats = useMemo(() => {
+        if (relatedEntries.length === 0) return null;
+        const firstDate = relatedEntries[relatedEntries.length - 1].when;
+        const daysCount = relatedEntries.length;
+        
+        const relatedMap = {};
+        
+        relatedEntries.forEach(e => {
+          const tags = type === 'person' ? splitTags(e.where) : splitTags(e.withWhom);
+          tags.forEach(t => {
+            relatedMap[t] = (relatedMap[t] || 0) + 1;
+          });
+        });
+        
+        const topRelated = Object.entries(relatedMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        
+        return { firstDate, daysCount, topRelated };
+      }, [relatedEntries, type]);
+
+      return (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center animate-fade-in" onClick={onClose}>
+          <div 
+            className="bg-gray-50 w-full h-[100dvh] max-w-lg sm:h-[90vh] sm:rounded-2xl overflow-hidden flex flex-col shadow-2xl animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={`p-6 pb-5 bg-gradient-to-br ${colorClass} text-white relative`}>
+              <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 bg-black/20 hover:bg-black/30 rounded-full flex items-center justify-center transition-colors">
+                <i className="fas fa-times"></i>
+              </button>
+              <div className="flex items-start gap-4 mt-2">
+                <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-3xl backdrop-blur-sm border border-white/30 shadow-inner overflow-hidden flex-shrink-0">
+                  {isPerson && xUsername ? (
+                    <img src={`https://unavatar.io/twitter/${xUsername}`} className="w-full h-full object-cover" />
+                  ) : (
+                    <i className={`fas ${icon}`}></i>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs opacity-90 font-medium mb-0.5 tracking-wider uppercase">{isPerson ? 'Profile' : 'Location'}</p>
+                  <h2 className="text-2xl font-bold leading-tight break-words">{name}</h2>
+                  
+                  {isPerson && (
+                    <div className="mt-2">
+                      {editX ? (
+                        <div className="flex gap-1 items-center bg-white/10 p-1 rounded-lg backdrop-blur-md">
+                          <input type="text" value={xInput} onChange={e=>setXInput(e.target.value)} placeholder="XのURL or @ID" className="text-gray-800 text-xs p-1.5 rounded-md flex-1 outline-none border-none" disabled={isSavingX}/>
+                          <button onClick={handleSaveX} disabled={isSavingX} className={`bg-white text-orange-500 px-3 py-1.5 rounded-md text-xs font-bold active:scale-95 ${isSavingX ? 'opacity-50' : ''}`}>{isSavingX ? '保存中...' : '保存'}</button>
+                        </div>
+                      ) : (
+                        xUsername ? (
+                          <div className="inline-flex items-center gap-1.5 text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded-lg cursor-pointer backdrop-blur-sm transition-colors border border-white/20" onClick={()=>setEditX(true)}>
+                            <i className="fab fa-twitter"></i> @{xUsername} <i className="fas fa-pen ml-1 text-[10px] opacity-70"></i>
+                          </div>
+                        ) : (
+                          <button onClick={()=>setEditX(true)} className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full backdrop-blur-sm transition-colors border border-white/20">
+                            <i className="fab fa-twitter mr-1"></i> Xアカウントを紐付け
+                          </button>
+                        )
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto overflow-x-hidden w-full p-5 space-y-6 pb-10">
+              {stats ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 text-center">
+                      <p className="text-[10px] text-gray-400 font-bold mb-1">思い出の日数</p>
+                      <p className={`text-3xl font-bold ${textClass}`}>{stats.daysCount} <span className="text-sm text-gray-400 font-medium ml-1">日</span></p>
+                    </div>
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 text-center flex flex-col justify-center">
+                      <p className="text-[10px] text-gray-400 font-bold mb-1">はじめての記録</p>
+                      <p className="text-lg font-bold text-gray-700">{stats.firstDate.replace(/-/g, '/')}</p>
+                    </div>
+                  </div>
+
+                  {stats.topRelated.length > 0 && (
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                      <h3 className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wider">
+                        <i className={`fas ${isPerson ? 'fa-map-marker-alt' : 'fa-users'} mr-2`}></i>
+                        よく一緒に{isPerson ? '行くお店' : 'いる人'}
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {stats.topRelated.map(([relName, count], idx) => (
+                          <button 
+                            key={idx} 
+                            onClick={() => onOpenProfile({ type: isPerson ? 'place' : 'person', name: relName })}
+                            className={`px-3 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 text-xs font-bold rounded-xl border border-gray-200 flex items-center gap-1 active:scale-95 transition-transform`}
+                          >
+                            <span>{relName}</span>
+                            <span className="opacity-40 font-normal ml-1">{count}回</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <h3 className="text-xs font-bold text-gray-500 mb-3 ml-1 uppercase tracking-wider"><i className="fas fa-history mr-2"></i>History</h3>
+                    <div className="space-y-4">
+                      {relatedEntries.map((entry, idx) => (
+                        <div key={idx} className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100">
+                          <div className="flex justify-between items-center mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-bold text-blue-600">{entry.when.replace(/-/g, '/')} <span className="text-xs">({getDayOfWeek(entry.when)})</span></span>
+                              <button onClick={() => { onSelectDate(entry.when); onClose(); }} className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors active:scale-95"><i className="fas fa-pen mr-1"></i>編集</button>
+                            </div>
+                          </div>
+
+                          {entry.images && entry.images.length > 0 && (
+                            <div className="flex gap-1 w-full mb-3">
+                              {entry.images.slice(0, 4).map((img, i) => (
+                                <div key={`modal-img-${idx}-${i}`} className="flex-1 aspect-square rounded-xl overflow-hidden bg-gray-50 border border-gray-100 shadow-sm">
+                                  <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {entry.what && <p className="text-gray-700 text-[13px] whitespace-pre-wrap break-words leading-relaxed mb-3">{entry.what}</p>}
+                          <TagList 
+                            places={splitTags(entry.where).filter(p => !(!isPerson && p === name))} 
+                            people={splitTags(entry.withWhom).filter(p => !(isPerson && p === name))} 
+                            onOpenProfile={onOpenProfile} 
+                            peopleProfiles={peopleProfiles}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-12 text-gray-400">データがありません</div>
+              )}
+            </div>
           </div>
         </div>
       );
