@@ -50,10 +50,8 @@
       return { __html: html };
     };
 
-    // ★修正: 旧仕様(whatに合体したデータ)と新仕様(topic1, what1と分かれたデータ)の両方を正しく表示する処理
     const getDisplayWhat = (entry) => {
       if (!entry) return '';
-      // 過去のデータの互換性対応
       if (entry.what) {
         return entry.what.split('<!--RAW-->')[0].trim();
       }
@@ -65,14 +63,12 @@
       return displayParts.join('\n\n');
     };
 
-    // ★追加: トピックを正しく抽出する処理（新旧対応）
     const getEntryTopics = (entry) => {
       if (!entry) return [];
       if (entry.topic) return splitTags(entry.topic);
       return [entry.topic1, entry.topic2].map(t => t ? t.trim() : '').filter(Boolean);
     };
 
-    // ★追加: TwitterURLを正しく抽出する処理（新旧対応）
     const getTweetUrls = (entry) => {
       if (!entry) return [];
       if (entry.twitterUrl) return extractTweetUrls(entry.twitterUrl);
@@ -262,7 +258,7 @@
       const mainRef = useRef(null); 
       
       const tabClickCountRef = useRef(0);
-      const tabClickTimeoutRef = useRef(null);
+      const clickTimerRef = useRef(null);
       const scrollPositions = useRef({ home: 0, calendar: 0, search: 0, insights: 0 });
       
       const [tabResetKeys, setTabResetKeys] = useState({ calendar: 0, insights: 0 });
@@ -385,38 +381,65 @@
         return { success: true };
       }, []);
 
+      // ★追加・修正: 既存の日記とTopicsシートの両方からすべてのトピックを収集して候補にする
+      const allAvailableTopics = useMemo(() => {
+        const topicsSet = new Set(Object.keys(topicsWiki));
+        entries.forEach(e => {
+          getEntryTopics(e).forEach(t => topicsSet.add(t));
+        });
+        return Array.from(topicsSet).sort((a, b) => a.localeCompare(b, 'ja'));
+      }, [entries, topicsWiki]);
+
+      // ★修正: シングルタップとダブルタップの挙動を整理
       const handleTabClick = (targetTab) => {
         if (activeTab !== targetTab) {
           setActiveTab(targetTab);
           tabClickCountRef.current = 0;
-          if (tabClickTimeoutRef.current) clearTimeout(tabClickTimeoutRef.current);
+          if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
           return;
         }
 
         tabClickCountRef.current += 1;
-        if (tabClickTimeoutRef.current) clearTimeout(tabClickTimeoutRef.current);
 
-        tabClickTimeoutRef.current = setTimeout(() => {
+        if (tabClickCountRef.current === 1) {
+          // 1回目のタップ：少し待ってダブルタップが来なければシングルタップとしてトップへスクロール
+          clickTimerRef.current = setTimeout(() => {
+            if (tabClickCountRef.current === 1) {
+              if (mainRef.current) {
+                mainRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+              }
+            }
+            tabClickCountRef.current = 0;
+          }, 300); 
+        } else if (tabClickCountRef.current === 2) {
+          // 2回目のタップ（ダブルタップ）：各タブ固有のランダムアクションなどを実行
+          clearTimeout(clickTimerRef.current);
           tabClickCountRef.current = 0;
-        }, 400);
-
-        if (tabClickCountRef.current === 2) {
+          
           if (targetTab === 'home') {
-            setViewingDateStr(todayStr); 
-          } else if (targetTab === 'calendar') {
-            setTabResetKeys(prev => ({ ...prev, calendar: prev.calendar + 1 })); 
+            const entriesWithContent = entries.filter(e => getDisplayWhat(e) || e.images?.length > 0 || e.where || e.withWhom || e.topic1 || e.topic2 || e.topic);
+            if (entriesWithContent.length > 0) {
+              const randomEntry = entriesWithContent[Math.floor(Math.random() * entriesWithContent.length)];
+              setViewingDateStr(randomEntry.when);
+            }
           } else if (targetTab === 'search') {
-            setSearchQuery('');          
-            setSearchFilterTag(null);
+            const allTags = [];
+            entries.forEach(e => {
+              getEntryTopics(e).forEach(t => allTags.push({type: 'topic', value: t}));
+              splitTags(e.where).forEach(t => allTags.push({type: 'place', value: t}));
+              splitTags(e.withWhom).forEach(t => allTags.push({type: 'person', value: t}));
+            });
+            if (allTags.length > 0) {
+              const randomTag = allTags[Math.floor(Math.random() * allTags.length)];
+              setSearchFilterTag(randomTag);
+              setSearchQuery('');
+            }
           } else if (targetTab === 'insights') {
             setTabResetKeys(prev => ({ ...prev, insights: prev.insights + 1 })); 
-          } 
-        } else if (tabClickCountRef.current === 3) {
-          if (mainRef.current) {
-            mainRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+          } else if (targetTab === 'calendar') {
+             setTabResetKeys(prev => ({ ...prev, calendar: prev.calendar + 1 }));
+             setViewingDateStr(todayStr); 
           }
-          tabClickCountRef.current = 0;
-          clearTimeout(tabClickTimeoutRef.current);
         }
       };
 
@@ -440,7 +463,7 @@
                 isGasLinked={!!GAS_WEB_APP_URL} 
                 onOpenProfile={setSelectedProfile}
                 peopleProfiles={peopleProfiles}
-                availableTopics={Object.keys(topicsWiki)}
+                availableTopics={allAvailableTopics}
               />
             )}
             {activeTab === 'calendar' && (
@@ -467,6 +490,7 @@
                 setQuery={setSearchQuery}
                 filterTag={searchFilterTag}
                 setFilterTag={setSearchFilterTag}
+                availableTopics={allAvailableTopics}
               />
             )}
             {activeTab === 'insights' && (
@@ -544,7 +568,6 @@
             setWithWhom(entry.withWhom || '');
             setImages(entry.images || []);
             
-            // ★修正: 新仕様のデータ読み込みを優先しつつ、古いデータへの対応も行う
             if (entry.topic1 !== undefined || entry.what1 !== undefined) {
               setTopic1(entry.topic1 || '');
               setTopic2(entry.topic2 || '');
@@ -552,7 +575,6 @@
               setWhat2(entry.what2 || '');
               setTwitterUrl(entry.twitterUrl || '');
             } else if (entry.what) {
-              // 古い仕様のデータ構造のフォールバック
               const topics = splitTags(entry.topic);
               setTopic1(topics[0] || '');
               setTopic2(topics[1] || '');
@@ -586,7 +608,6 @@
         }
       }, [viewingDateStr, entries, lastLoadedDate]);
 
-      // ★修正: 古い送信データの構築処理（buildWhatToSave, buildTopicToSave）を削除し、GASの仕様に合わせてシンプルに各項目を送る
       const buildPayload = () => {
         return {
           when: viewingDateStr, 
@@ -816,7 +837,7 @@
                         {t}
                       </button>
                     )) : (
-                      <span className="text-xs text-gray-400">スプレッドシートのTopicsにトピックを追加してください</span>
+                      <span className="text-xs text-gray-400">日記やTopicsシートにトピックを追加してください</span>
                     )}
                   </div>
                   <div className="relative">
@@ -837,7 +858,7 @@
                         {t}
                       </button>
                     )) : (
-                      <span className="text-xs text-gray-400">スプレッドシートのTopicsにトピックを追加してください</span>
+                      <span className="text-xs text-gray-400">日記やTopicsシートにトピックを追加してください</span>
                     )}
                   </div>
                   <div className="relative">
@@ -880,7 +901,6 @@
                       const entryYear = entry.when.split('-')[0];
                       const currentYear = new Date(todayStr).getFullYear();
                       const diffYear = currentYear - parseInt(entryYear);
-                      // ★修正: 新仕様のデータを使って表示内容を組み立てる
                       const displayWhat = getDisplayWhat(entry);
                       const tweetUrls = getTweetUrls(entry);
 
@@ -931,7 +951,8 @@
 
     function CalendarTab({ entries, todayStr, onSelectDate, onOpenProfile, peopleProfiles, resetKey, mainRef }) {
       const currentYear = new Date(todayStr).getFullYear();
-      const [years, setYears] = useState(() => Array.from({ length: 11 }, (_, i) => currentYear - 10 + i));
+      // ★修正: カレンダーの初期表示年を「現在年-2」〜「現在年+2」の5年間にし、今年が中心にくるように変更
+      const [years, setYears] = useState(() => Array.from({ length: 5 }, (_, i) => currentYear - 2 + i));
       const [selectedDate, setSelectedDate] = useState(null);
       const months = Array.from({ length: 12 }, (_, i) => i);
 
@@ -946,7 +967,6 @@
         return entries.find(e => e.when === selectedDate) || null;
       }, [selectedDate, entries]);
 
-      // ★修正: 新仕様のデータ表示に変更
       const displayWhat = selectedEntry ? getDisplayWhat(selectedEntry) : '';
       const tweetUrls = selectedEntry ? getTweetUrls(selectedEntry) : [];
 
@@ -1001,10 +1021,10 @@
               } else if (entry.target === bottomObserverRef.current) {
                 setYears(prev => {
                   const last = prev[prev.length - 1];
-                  if (last >= currentYear) return prev;
+                  if (last >= currentYear + 10) return prev; // 無限スクロールの制限
                   const nextYears = [];
                   for (let i = 1; i <= 3; i++) {
-                    if (last + i <= currentYear) nextYears.push(last + i);
+                    nextYears.push(last + i);
                   }
                   return nextYears.length > 0 ? [...prev, ...nextYears] : prev;
                 });
@@ -1119,7 +1139,7 @@
       );
     }
 
-    function SearchTab({ entries, onOpenProfile, onSelectDate, peopleProfiles, query, setQuery, filterTag, setFilterTag }) {
+    function SearchTab({ entries, onOpenProfile, onSelectDate, peopleProfiles, query, setQuery, filterTag, setFilterTag, availableTopics = [] }) {
       const popularPeople = useMemo(() => {
         const map = {};
         entries.forEach(e => splitTags(e.withWhom).forEach(p => map[p] = (map[p] || 0) + 1));
@@ -1134,17 +1154,21 @@
 
       const popularTopics = useMemo(() => {
         const map = {};
-        // ★修正: 新仕様のトピックデータから集計する
+        // ★修正: availableTopics(トピック候補全体)をベースにしつつ、使われた回数でソートする
+        availableTopics.forEach(t => map[t] = 0);
         entries.forEach(e => getEntryTopics(e).forEach(p => map[p] = (map[p] || 0) + 1));
-        return Object.keys(map).sort((a, b) => a.localeCompare(b, 'ja'));
-      }, [entries]);
+        
+        return Object.keys(map).sort((a, b) => {
+          if (map[b] !== map[a]) return map[b] - map[a];
+          return a.localeCompare(b, 'ja');
+        });
+      }, [entries, availableTopics]);
 
       const filteredEntries = useMemo(() => {
         if (filterTag) {
           return entries.filter(e => {
             if (filterTag.type === 'person') return splitTags(e.withWhom).includes(filterTag.value);
             if (filterTag.type === 'place') return splitTags(e.where).includes(filterTag.value);
-            // ★修正: 新仕様のトピックデータでフィルタリングする
             if (filterTag.type === 'topic') return getEntryTopics(e).includes(filterTag.value);
             return false;
           }).sort((a, b) => new Date(b.when) - new Date(a.when));
@@ -1152,7 +1176,6 @@
 
         if (!query.trim()) return [];
         const lower = query.toLowerCase();
-        // ★修正: 新仕様のデータ項目を含めて全文検索できるようにする
         return entries.filter(e => 
           getDisplayWhat(e).toLowerCase().includes(lower) || 
           (e.where || '').toLowerCase().includes(lower) || 
@@ -1245,7 +1268,6 @@
               <div className="space-y-6">
                 <p className="text-sm text-gray-500 mb-2">{filteredEntries.length}件見つかりました</p>
                 {filteredEntries.map((entry, idx) => {
-                  // ★修正: 新仕様のデータで表示する
                   const displayWhat = getDisplayWhat(entry);
                   const tweetUrls = getTweetUrls(entry);
 
@@ -1462,13 +1484,12 @@
       );
     }
 
+    // ★修正: 全期間インサイトから「よく行くお店」を廃止し、「よく会う人」のみに整理
     function AllTimeInsights({ entries, onOpenProfile, peopleProfiles, todayStr }) {
-      const { topPlaces, allPeople } = useMemo(() => {
-        const placeMap = {};
+      const { allPeople } = useMemo(() => {
         const peopleMap = {};
 
         entries.forEach(e => {
-          splitTags(e.where).forEach(p => placeMap[p] = (placeMap[p] || 0) + 1);
           splitTags(e.withWhom).forEach(p => {
             if (!peopleMap[p]) {
               peopleMap[p] = { count: 0, dates: [] };
@@ -1478,7 +1499,6 @@
           });
         });
 
-        const sortedPlaces = Object.entries(placeMap).sort((a, b) => b[1] - a[1]).slice(0, 3);
         const sortedPeople = Object.entries(peopleMap).map(([name, data]) => ({
           name,
           count: data.count,
@@ -1486,32 +1506,12 @@
         })).sort((a, b) => b.count - a.count);
 
         return {
-          topPlaces: sortedPlaces,
           allPeople: sortedPeople,
         };
       }, [entries]);
 
       return (
         <div className="space-y-6 animate-fade-in">
-          <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-            <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-map-marker-alt text-green-500 mr-2"></i> よく行くお店 TOP 3</h3>
-            {topPlaces.length > 0 ? (
-              <ul className="space-y-3">
-                {topPlaces.map((item, index) => (
-                  <li key={item[0]} onClick={() => onOpenProfile({type: 'place', name: item[0]})} className="flex justify-between items-center bg-gray-50 hover:bg-gray-100 active:scale-95 transition-transform p-3 rounded-2xl cursor-pointer">
-                    <div className="flex items-center">
-                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${index === 0 ? 'bg-yellow-100 text-yellow-700' : index === 1 ? 'bg-gray-200 text-gray-600' : 'bg-orange-100 text-orange-700'}`}>
-                        {index + 1}
-                      </span>
-                      <span className="font-bold text-gray-700">{item[0]}</span>
-                    </div>
-                    <span className="text-gray-500 text-sm font-bold">{item[1]}回</span>
-                  </li>
-                ))}
-              </ul>
-            ) : <p className="text-gray-400 text-sm text-center py-4">データがありません</p>}
-          </div>
-
           <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
             <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-users text-blue-500 mr-2"></i> よく会う人 ランキング</h3>
             {allPeople.length > 0 ? (
