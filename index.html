@@ -50,6 +50,11 @@
       return { __html: html };
     };
 
+    const getDisplayWhat = (rawWhat) => {
+      if (!rawWhat) return '';
+      return rawWhat.split('<!--RAW-->')[0].trim();
+    };
+
     const useSwipe = (onSwipeLeft, onSwipeRight) => {
       const touchStartX = useRef(null);
       const touchStartY = useRef(null);
@@ -155,9 +160,6 @@
       });
     };
 
-    // ==========================================
-    // 共通コンポーネント
-    // ==========================================
     function TagList({ places, people, topics, onOpenProfile, peopleProfiles = {} }) {
       if (!places?.length && !people?.length && !topics?.length) return null;
       return (
@@ -217,45 +219,6 @@
             <a href={embedUrl}>Loading Tweet...</a>
           </blockquote>
         </div>
-      );
-    }
-
-    // 各タブで共通使用する日記カード内容コンポーネント
-    function EntryCardContent({ entry, isPerson = false, isTopic = false, name = '', onOpenProfile, peopleProfiles }) {
-      const tweetUrls = extractTweetUrls(entry.twitterUrl || '');
-      
-      return (
-        <>
-          {entry.images && entry.images.length > 0 && (
-            <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-100 mb-4">
-              {entry.images.map((img, i) => (
-                <div key={`img-${i}`} className="w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
-                  <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {entry.topic1 && <h4 className="font-bold text-sm text-purple-600 mt-1 mb-1">【{entry.topic1}】</h4>}
-          {entry.what1 && <p className="text-gray-800 whitespace-pre-wrap break-words text-[15px] leading-relaxed mb-3">{entry.what1}</p>}
-          
-          {entry.topic2 && <h4 className="font-bold text-sm text-purple-600 mt-1 mb-1">【{entry.topic2}】</h4>}
-          {entry.what2 && <p className="text-gray-800 whitespace-pre-wrap break-words text-[15px] leading-relaxed mb-3">{entry.what2}</p>}
-
-          {tweetUrls.length > 0 && (
-            <div className="flex flex-col gap-2 mb-4">
-              {tweetUrls.map((url, i) => <TweetEmbed key={`tweet-${i}`} url={url} />)}
-            </div>
-          )}
-
-          <TagList 
-            places={splitTags(entry.where).filter(p => !(!isPerson && !isTopic && p === name))} 
-            people={splitTags(entry.withWhom).filter(p => !(isPerson && p === name))} 
-            topics={[...splitTags(entry.topic1), ...splitTags(entry.topic2)].filter(p => !(isTopic && p === name))}
-            onOpenProfile={onOpenProfile} 
-            peopleProfiles={peopleProfiles}
-          />
-        </>
       );
     }
 
@@ -332,7 +295,7 @@
             await fetch(GAS_WEB_APP_URL, {
               method: 'POST',
               headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
-              body: JSON.stringify({ type: 'profile', name: name, xUsername: data.xUsername, memo: data.memo }),
+              body: JSON.stringify({ type: 'profile', name: name, ...data }), // ★スプレッド構文でmemo等も送信
             });
           } catch (error) {}
         }
@@ -518,9 +481,6 @@
       );
     }
 
-    // ==========================================
-    // 入力タブ
-    // ==========================================
     function HomeTab({ viewingDateStr, setViewingDateStr, todayStr, entries, onSave, isGasLinked, onOpenProfile, peopleProfiles }) {
       const [where, setWhere] = useState('');
       const [withWhom, setWithWhom] = useState('');
@@ -545,11 +505,39 @@
             setWhere(entry.where || '');
             setWithWhom(entry.withWhom || '');
             setImages(entry.images || []);
-            setTopic1(entry.topic1 || '');
-            setWhat1(entry.what1 || '');
-            setTopic2(entry.topic2 || '');
-            setWhat2(entry.what2 || '');
-            setTwitterUrl(entry.twitterUrl || '');
+            
+            // ★ 個別フィールドとして直接GASから受け取れる場合はそれを使用
+            if (entry.topic1 !== undefined) {
+              setTopic1(entry.topic1 || '');
+              setTopic2(entry.topic2 || '');
+              setWhat1(entry.what1 || '');
+              setWhat2(entry.what2 || '');
+              setTwitterUrl(entry.twitterUrl || '');
+            } else {
+              // 互換性フォールバック（旧データ等）
+              const topics = splitTags(entry.topic);
+              setTopic1(topics[0] || '');
+              setTopic2(topics[1] || '');
+
+              const parts = (entry.what || '').split('<!--RAW-->');
+              if (parts.length > 1) {
+                try {
+                  const raw = JSON.parse(parts[1]);
+                  setWhat1(raw.what1 || '');
+                  setWhat2(raw.what2 || '');
+                  setTwitterUrl(raw.twitterUrl || '');
+                } catch (e) {
+                  setWhat1(parts[0]);
+                  setWhat2('');
+                  setTwitterUrl('');
+                }
+              } else {
+                setWhat1(entry.what || '');
+                setWhat2('');
+                const urls = extractTweetUrls(entry.what);
+                setTwitterUrl(urls.length > 0 ? urls[0] : '');
+              }
+            }
           } else {
             setWhere(''); setWithWhom(''); setImages([]);
             setTopic1(''); setTopic2(''); setWhat1(''); setWhat2(''); setTwitterUrl('');
@@ -558,34 +546,71 @@
         }
       }, [viewingDateStr, entries, lastLoadedDate]);
 
+      const buildWhatToSave = () => {
+        const displayParts = [];
+        if (topic1 || what1) displayParts.push(topic1 ? `【${topic1}】\n${what1}` : what1);
+        if (topic2 || what2) displayParts.push(topic2 ? `【${topic2}】\n${what2}` : what2);
+        
+        let displayText = displayParts.join('\n\n');
+        if (twitterUrl) displayText += (displayText ? '\n\n' : '') + twitterUrl;
+        
+        const rawJson = JSON.stringify({ what1, what2, twitterUrl });
+        return `${displayText}<!--RAW-->${rawJson}`;
+      };
+
+      const buildTopicToSave = () => {
+        return [topic1, topic2].map(t => t.trim()).filter(Boolean).join(',');
+      };
+
+      const buildPayload = () => {
+        return {
+          when: viewingDateStr, 
+          where, 
+          withWhom, 
+          images,
+          topic1,
+          what1,
+          topic2,
+          what2,
+          twitterUrl,
+          // 既存仕様・表示用の互換性
+          what: buildWhatToSave(), 
+          topic: buildTopicToSave()
+        };
+      };
+
       const forceSave = () => {
         const entry = entries.find(e => e.when === viewingDateStr);
+        const currentPayload = buildPayload();
+        
         const isChanged = 
-          (entry?.what1 || '') !== what1 ||
-          (entry?.what2 || '') !== what2 ||
           (entry?.where || '') !== where ||
           (entry?.withWhom || '') !== withWhom ||
           (entry?.topic1 || '') !== topic1 ||
+          (entry?.what1 || '') !== what1 ||
           (entry?.topic2 || '') !== topic2 ||
+          (entry?.what2 || '') !== what2 ||
           (entry?.twitterUrl || '') !== twitterUrl ||
           JSON.stringify(entry?.images || []) !== JSON.stringify(images);
 
         const hasContent = what1 || what2 || where || withWhom || topic1 || topic2 || twitterUrl || images.length > 0;
 
         if (isChanged && hasContent) {
-          onSave({ when: viewingDateStr, what1, what2, where, withWhom, topic1, topic2, twitterUrl, images });
+          onSave(currentPayload);
         }
       };
 
       useEffect(() => {
         const entry = entries.find(e => e.when === viewingDateStr);
+        const currentPayload = buildPayload();
+        
         const isChanged = 
-          (entry?.what1 || '') !== what1 ||
-          (entry?.what2 || '') !== what2 ||
           (entry?.where || '') !== where ||
           (entry?.withWhom || '') !== withWhom ||
           (entry?.topic1 || '') !== topic1 ||
+          (entry?.what1 || '') !== what1 ||
           (entry?.topic2 || '') !== topic2 ||
+          (entry?.what2 || '') !== what2 ||
           (entry?.twitterUrl || '') !== twitterUrl ||
           JSON.stringify(entry?.images || []) !== JSON.stringify(images);
 
@@ -593,7 +618,7 @@
 
         if (isChanged && hasContent) {
           const timerId = setTimeout(async () => {
-            const res = await onSave({ when: viewingDateStr, what1, what2, where, withWhom, topic1, topic2, twitterUrl, images });
+            const res = await onSave(currentPayload);
             if (res && res.error) {
               setSaveMessage('自動保存エラー: ' + res.error);
             } else {
@@ -671,7 +696,7 @@
 
       const handleSave = async () => {
         setIsSaving(true);
-        const res = await onSave({ when: viewingDateStr, what1, what2, where, withWhom, topic1, topic2, twitterUrl, images });
+        const res = await onSave(buildPayload());
         setIsSaving(false);
         
         if (res && res.error) {
@@ -762,7 +787,7 @@
                   <input type="text" value={topic1} onChange={(e) => setTopic1(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="トピック1 (例: 健康維持)" disabled={isSaving} />
                 </div>
                 <div className="relative">
-                  <textarea value={what1} onChange={(e) => setWhat1(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none resize-none text-[15px] bg-gray-50 placeholder-gray-400" rows="3" placeholder="トピック1に関連する内容" disabled={isSaving}/>
+                  <textarea value={what1} onChange={(e) => setWhat1(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none resize-none text-sm bg-gray-50 placeholder-gray-400" rows="3" placeholder="トピック1に関連する内容" disabled={isSaving}/>
                 </div>
 
                 {/* トピック2 */}
@@ -771,7 +796,7 @@
                   <input type="text" value={topic2} onChange={(e) => setTopic2(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="トピック2 (例: チーム既婚者)" disabled={isSaving} />
                 </div>
                 <div className="relative">
-                  <textarea value={what2} onChange={(e) => setWhat2(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none resize-none text-[15px] bg-gray-50 placeholder-gray-400" rows="3" placeholder="トピック2に関連する内容" disabled={isSaving}/>
+                  <textarea value={what2} onChange={(e) => setWhat2(e.target.value)} className="w-full p-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none resize-none text-sm bg-gray-50 placeholder-gray-400" rows="3" placeholder="トピック2に関連する内容" disabled={isSaving}/>
                 </div>
 
                 {/* TwitterURL */}
@@ -810,6 +835,8 @@
                       const entryYear = entry.when.split('-')[0];
                       const currentYear = new Date(todayStr).getFullYear();
                       const diffYear = currentYear - parseInt(entryYear);
+                      const displayWhat = getDisplayWhat(entry.what);
+                      const tweetUrls = extractTweetUrls(displayWhat);
 
                       return (
                         <div key={idx} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
@@ -819,7 +846,25 @@
                             </div>
                           </div>
                           
-                          <EntryCardContent entry={entry} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
+                          {entry.images && entry.images.length > 0 && (
+                            <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-100 mb-4">
+                              {entry.images.map((img, i) => (
+                                <div key={`past-img-${i}`} className="w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
+                                  <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <p className="text-gray-800 whitespace-pre-wrap break-words text-[15px] leading-relaxed mb-4">{displayWhat}</p>
+                          
+                          {tweetUrls.length > 0 && (
+                            <div className="flex flex-col gap-2 mb-4">
+                              {tweetUrls.map((url, i) => <TweetEmbed key={`past-${url}-${i}`} url={url} />)}
+                            </div>
+                          )}
+
+                          <TagList places={splitTags(entry.where)} people={splitTags(entry.withWhom)} topics={splitTags(entry.topic)} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
                         </div>
                       );
                     })}
@@ -832,9 +877,6 @@
       );
     }
 
-    // ==========================================
-    // カレンダータブ
-    // ==========================================
     function CalendarTab({ entries, todayStr, onSelectDate, onOpenProfile, peopleProfiles, resetKey, mainRef }) {
       const currentYear = new Date(todayStr).getFullYear();
       const [years, setYears] = useState(() => Array.from({ length: 11 }, (_, i) => currentYear - 10 + i));
@@ -851,6 +893,9 @@
         if (!selectedDate) return null;
         return entries.find(e => e.when === selectedDate) || null;
       }, [selectedDate, entries]);
+
+      const displayWhat = selectedEntry ? getDisplayWhat(selectedEntry.what) : '';
+      const tweetUrls = extractTweetUrls(displayWhat);
 
       const topObserverRef = useRef(null);
       const bottomObserverRef = useRef(null);
@@ -949,7 +994,29 @@
                 </div>
                 <div className="p-6 overflow-y-auto overflow-x-hidden">
                   {selectedEntry ? (
-                    <EntryCardContent entry={selectedEntry} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
+                    <>
+                      {selectedEntry.images && selectedEntry.images.length > 0 && (
+                        <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-100 mb-4">
+                          {selectedEntry.images.map((img, i) => (
+                            <div key={`modal-img-${i}`} className="w-full h-full bg-white rounded-xl overflow-hidden shadow-sm">
+                              <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <p className="text-gray-800 whitespace-pre-wrap text-[15px] leading-relaxed mb-4">{displayWhat}</p>
+
+                      {tweetUrls.length > 0 && (
+                        <div className="flex flex-col gap-2 mb-4">
+                          {tweetUrls.map((url, i) => <TweetEmbed key={`modal-${url}-${i}`} url={url} />)}
+                        </div>
+                      )}
+
+                      <div className="mb-4">
+                        <TagList places={splitTags(selectedEntry.where)} people={splitTags(selectedEntry.withWhom)} topics={splitTags(selectedEntry.topic)} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
+                      </div>
+                    </>
                   ) : <div className="text-center py-6 text-gray-400 text-sm">この日の日記はありません。</div>}
                   <button onClick={() => { onSelectDate(selectedDate); setSelectedDate(null); }} className="w-full mt-4 bg-blue-50 text-blue-600 font-bold py-3 rounded-2xl hover:bg-blue-100 flex justify-center items-center active:scale-95 transition-transform">
                     <i className="fas fa-pen-to-square mr-2"></i> この日を編集する
@@ -999,9 +1066,6 @@
       );
     }
 
-    // ==========================================
-    // 検索タブ
-    // ==========================================
     function SearchTab({ entries, onOpenProfile, onSelectDate, peopleProfiles, query, setQuery, filterTag, setFilterTag }) {
       const popularPeople = useMemo(() => {
         const map = {};
@@ -1017,10 +1081,7 @@
 
       const popularTopics = useMemo(() => {
         const map = {};
-        entries.forEach(e => {
-          splitTags(e.topic1).forEach(p => map[p] = (map[p] || 0) + 1);
-          splitTags(e.topic2).forEach(p => map[p] = (map[p] || 0) + 1);
-        });
+        entries.forEach(e => splitTags(e.topic).forEach(p => map[p] = (map[p] || 0) + 1));
         return Object.keys(map).sort((a, b) => a.localeCompare(b, 'ja'));
       }, [entries]);
 
@@ -1029,7 +1090,7 @@
           return entries.filter(e => {
             if (filterTag.type === 'person') return splitTags(e.withWhom).includes(filterTag.value);
             if (filterTag.type === 'place') return splitTags(e.where).includes(filterTag.value);
-            if (filterTag.type === 'topic') return splitTags(e.topic1).includes(filterTag.value) || splitTags(e.topic2).includes(filterTag.value);
+            if (filterTag.type === 'topic') return splitTags(e.topic).includes(filterTag.value);
             return false;
           }).sort((a, b) => new Date(b.when) - new Date(a.when));
         }
@@ -1037,12 +1098,10 @@
         if (!query.trim()) return [];
         const lower = query.toLowerCase();
         return entries.filter(e => 
-          (e.what1 || '').toLowerCase().includes(lower) || 
-          (e.what2 || '').toLowerCase().includes(lower) || 
+          getDisplayWhat(e.what).toLowerCase().includes(lower) || 
           (e.where || '').toLowerCase().includes(lower) || 
           (e.withWhom || '').toLowerCase().includes(lower) ||
-          (e.topic1 || '').toLowerCase().includes(lower) ||
-          (e.topic2 || '').toLowerCase().includes(lower)
+          (e.topic || '').toLowerCase().includes(lower)
         ).sort((a, b) => new Date(b.when) - new Date(a.when));
       }, [query, filterTag, entries]);
 
@@ -1127,17 +1186,41 @@
             ) : (
               <div className="space-y-6">
                 <p className="text-sm text-gray-500 mb-2">{filteredEntries.length}件見つかりました</p>
-                {filteredEntries.map((entry, idx) => (
-                  <div key={idx} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
-                    <div className="text-sm font-bold text-blue-600 mb-3 flex justify-between border-b border-gray-50 pb-2">
-                      <div className="flex items-center gap-2">
-                        <span>{entry.when && entry.when.replace(/-/g, '/')} <span className="text-xs">({getDayOfWeek(entry.when)})</span></span>
-                        <button onClick={() => onSelectDate(entry.when)} className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors active:scale-95"><i className="fas fa-pen mr-1"></i>編集</button>
+                {filteredEntries.map((entry, idx) => {
+                  const displayWhat = getDisplayWhat(entry.what);
+                  const tweetUrls = extractTweetUrls(displayWhat);
+
+                  return (
+                    <div key={idx} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
+                      <div className="text-sm font-bold text-blue-600 mb-3 flex justify-between border-b border-gray-50 pb-2">
+                        <div className="flex items-center gap-2">
+                          <span>{entry.when && entry.when.replace(/-/g, '/')} <span className="text-xs">({getDayOfWeek(entry.when)})</span></span>
+                          <button onClick={() => onSelectDate(entry.when)} className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors active:scale-95"><i className="fas fa-pen mr-1"></i>編集</button>
+                        </div>
                       </div>
+
+                      {entry.images && entry.images.length > 0 && (
+                        <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-white p-1 rounded-2xl border border-gray-100 mb-4">
+                          {entry.images.map((img, i) => (
+                            <div key={`search-img-${i}`} className="w-full h-full bg-gray-50 rounded-xl overflow-hidden shadow-sm">
+                              <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <p className="text-gray-800 whitespace-pre-wrap break-words text-[15px] leading-relaxed mb-4">{displayWhat}</p>
+                      
+                      {tweetUrls.length > 0 && (
+                        <div className="flex flex-col gap-2 mb-4">
+                          {tweetUrls.map((url, i) => <TweetEmbed key={`search-${url}-${i}`} url={url} />)}
+                        </div>
+                      )}
+
+                      <TagList places={splitTags(entry.where)} people={splitTags(entry.withWhom)} topics={splitTags(entry.topic)} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
                     </div>
-                    <EntryCardContent entry={entry} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1145,9 +1228,6 @@
       );
     }
 
-    // ==========================================
-    // インサイト・振り返りタブ
-    // ==========================================
     function InsightsTab({ entries, onOpenProfile, peopleProfiles, resetKey, todayStr }) {
       const [viewMode, setViewMode] = useState('monthly'); 
       
@@ -1572,7 +1652,7 @@
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="fixed bottom-16 left-0 w-full bg-gray-50 border-t border-gray-200 p-3 z-20" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-bottom))' }}>
+          <div className="fixed bottom-16 left-0 w-full bg-gray-50 border-t border-gray-200 p-3 z-20" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
             <div className="flex items-center gap-2 bg-white rounded-full border border-gray-200 p-1 pl-4 shadow-sm max-w-lg mx-auto">
               <input 
                 type="text" 
@@ -1605,7 +1685,11 @@
       const personProfile = isPerson ? (peopleProfiles[name] || {}) : null;
       const xUsername = personProfile?.xUsername;
       
-      const wikiMemo = isPerson ? (peopleProfiles[name]?.memo || '') : (topicsWiki[name]?.memo || '');
+      // ★ 変更点: 人物の場合は peopleProfiles のメモを参照し、トピックの場合は topicsWiki のメモを参照する
+      const personMemo = personProfile?.memo || '';
+      const topicMemo = topicsWiki[name]?.memo || '';
+      const wikiMemo = isPerson ? personMemo : topicMemo;
+      
       const [wikiText, setWikiText] = useState(wikiMemo);
       const [isSavingWiki, setIsSavingWiki] = useState(false);
       
@@ -1631,6 +1715,7 @@
 
       const handleSaveWiki = async () => {
         setIsSavingWiki(true);
+        // ★ 変更点: 人物の場合は updatePersonProfile、トピックの場合は updateTopicWiki を呼び出す
         if (isPerson) {
           await updatePersonProfile(name, { memo: wikiText });
         } else {
@@ -1648,7 +1733,7 @@
         return entries.filter(e => {
           if (type === 'person') return splitTags(e.withWhom).includes(name);
           if (type === 'place') return splitTags(e.where).includes(name);
-          if (type === 'topic') return splitTags(e.topic1).includes(name) || splitTags(e.topic2).includes(name);
+          if (type === 'topic') return splitTags(e.topic).includes(name);
           return false;
         }).sort((a, b) => new Date(b.when) - new Date(a.when));
       }, [entries, type, name]);
@@ -1786,7 +1871,25 @@
                             </div>
                           </div>
 
-                          <EntryCardContent entry={entry} isPerson={isPerson} isTopic={isTopic} name={name} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} />
+                          {entry.images && entry.images.length > 0 && (
+                            <div className="flex gap-1 w-full mb-3">
+                              {entry.images.slice(0, 4).map((img, i) => (
+                                <div key={`modal-img-${idx}-${i}`} className="flex-1 aspect-square rounded-xl overflow-hidden bg-gray-50 border border-gray-100 shadow-sm">
+                                  <img src={formatImageUrl(img)} className="w-full h-full object-cover" />
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <p className="text-gray-800 whitespace-pre-wrap break-words text-[15px] leading-relaxed mb-4">{getDisplayWhat(entry.what)}</p>
+                          
+                          <TagList 
+                            places={splitTags(entry.where).filter(p => !(!isPerson && !isTopic && p === name))} 
+                            people={splitTags(entry.withWhom).filter(p => !(isPerson && p === name))} 
+                            topics={splitTags(entry.topic).filter(p => !(isTopic && p === name))}
+                            onOpenProfile={onOpenProfile} 
+                            peopleProfiles={peopleProfiles}
+                          />
                         </div>
                       ))}
                     </div>
