@@ -243,7 +243,6 @@
       );
     }
 
-
     function App() {
       const [activeTab, setActiveTab] = useState('home');
       const [searchQuery, setSearchQuery] = useState('');
@@ -254,6 +253,8 @@
       const [selectedProfile, setSelectedProfile] = useState(null); 
       const [peopleProfiles, setPeopleProfiles] = useState({});
       const [topicsWiki, setTopicsWiki] = useState({}); 
+      // ★追加: 距離データの辞書
+      const [distances, setDistances] = useState({});
 
       const mainRef = useRef(null); 
       
@@ -286,6 +287,8 @@
                 setEntries(sortedData);
                 if (data.profiles) setPeopleProfiles(data.profiles);
                 if (data.topicsWiki) setTopicsWiki(data.topicsWiki); 
+                // ★追加: 距離データを保存
+                if (data.distances) setDistances(data.distances);
               }
             } catch (error) {
               console.error("データの取得に失敗しました:", error);
@@ -402,7 +405,6 @@
         if (tabClickCountRef.current === 1) {
           clickTimerRef.current = setTimeout(() => {
             if (tabClickCountRef.current === 1) {
-              // カレンダーはシングルタップでトップではなく「今日を真ん中」にする
               if (targetTab === 'calendar') {
                 setTabResetKeys(prev => ({ ...prev, calendar: prev.calendar + 1 }));
                 setViewingDateStr(todayStr); 
@@ -450,19 +452,6 @@
           )}
 
           <main ref={mainRef} onScroll={handleScroll} className="flex-1 overflow-y-auto w-full relative">
-            {activeTab === 'home' && (
-              <HomeTab 
-                viewingDateStr={viewingDateStr} 
-                setViewingDateStr={setViewingDateStr}
-                todayStr={todayStr} 
-                entries={entries} 
-                onSave={saveEntry} 
-                isGasLinked={!!GAS_WEB_APP_URL} 
-                onOpenProfile={setSelectedProfile}
-                peopleProfiles={peopleProfiles}
-                availableTopics={allAvailableTopics}
-              />
-            )}
             {activeTab === 'calendar' && (
               <CalendarTab 
                 entries={entries} 
@@ -475,6 +464,19 @@
                 peopleProfiles={peopleProfiles}
                 resetKey={tabResetKeys.calendar}
                 mainRef={mainRef}
+              />
+            )}
+            {activeTab === 'home' && (
+              <HomeTab 
+                viewingDateStr={viewingDateStr} 
+                setViewingDateStr={setViewingDateStr}
+                todayStr={todayStr} 
+                entries={entries} 
+                onSave={saveEntry} 
+                isGasLinked={!!GAS_WEB_APP_URL} 
+                onOpenProfile={setSelectedProfile}
+                peopleProfiles={peopleProfiles}
+                availableTopics={allAvailableTopics}
               />
             )}
             {activeTab === 'search' && (
@@ -497,6 +499,7 @@
                 peopleProfiles={peopleProfiles} 
                 resetKey={tabResetKeys.insights}
                 todayStr={todayStr}
+                distances={distances} // ★追加: 距離データを渡す
                 onSelectDate={(date) => { 
                   setViewingDateStr(date); 
                   setActiveTab('home'); 
@@ -544,6 +547,7 @@
 
     function HomeTab({ viewingDateStr, setViewingDateStr, todayStr, entries, onSave, isGasLinked, onOpenProfile, peopleProfiles, availableTopics = [] }) {
       const [where, setWhere] = useState('');
+      const [amount, setAmount] = useState(''); // ★追加: 金額
       const [withWhom, setWithWhom] = useState('');
       const [images, setImages] = useState([]);
       
@@ -568,6 +572,7 @@
         if (viewingDateStr !== lastLoadedDate || (entry && lastLoadedDate === null)) {
           if (entry) {
             setWhere(entry.where || '');
+            setAmount(entry.amount || ''); // ★追加
             setWithWhom(entry.withWhom || '');
             setImages(entry.images || []);
             
@@ -604,7 +609,7 @@
               setTopic1(''); setTopic2(''); setWhat1(''); setWhat2(''); setTwitterUrl('');
             }
           } else {
-            setWhere(''); setWithWhom(''); setImages([]);
+            setWhere(''); setAmount(''); setWithWhom(''); setImages([]); // ★追加
             setTopic1(''); setTopic2(''); setWhat1(''); setWhat2(''); setTwitterUrl('');
           }
           setLastLoadedDate(viewingDateStr);
@@ -615,6 +620,7 @@
         return {
           when: viewingDateStr, 
           where, 
+          amount, // ★追加
           withWhom, 
           images,
           topic1,
@@ -631,6 +637,7 @@
         
         const isChanged = 
           (entry?.where || '') !== where ||
+          (entry?.amount || '') !== amount || // ★追加
           (entry?.withWhom || '') !== withWhom ||
           (entry?.topic1 || '') !== topic1 ||
           (entry?.what1 || '') !== what1 ||
@@ -639,7 +646,7 @@
           (entry?.twitterUrl || '') !== twitterUrl ||
           JSON.stringify(entry?.images || []) !== JSON.stringify(images);
 
-        const hasContent = what1 || what2 || where || withWhom || topic1 || topic2 || twitterUrl || images.length > 0;
+        const hasContent = what1 || what2 || where || amount || withWhom || topic1 || topic2 || twitterUrl || images.length > 0; // ★追加
 
         if (isChanged && hasContent) {
           onSave(currentPayload);
@@ -652,6 +659,7 @@
         
         const isChanged = 
           (entry?.where || '') !== where ||
+          (entry?.amount || '') !== amount || // ★追加
           (entry?.withWhom || '') !== withWhom ||
           (entry?.topic1 || '') !== topic1 ||
           (entry?.what1 || '') !== what1 ||
@@ -660,7 +668,7 @@
           (entry?.twitterUrl || '') !== twitterUrl ||
           JSON.stringify(entry?.images || []) !== JSON.stringify(images);
 
-        const hasContent = what1 || what2 || where || withWhom || topic1 || topic2 || twitterUrl || images.length > 0;
+        const hasContent = what1 || what2 || where || amount || withWhom || topic1 || topic2 || twitterUrl || images.length > 0; // ★追加
 
         if (isChanged && hasContent) {
           const timerId = setTimeout(async () => {
@@ -674,7 +682,7 @@
           }, 1500);
           return () => clearTimeout(timerId);
         }
-      }, [what1, what2, topic1, topic2, twitterUrl, where, withWhom, images, viewingDateStr, entries, onSave]); 
+      }, [what1, what2, topic1, topic2, twitterUrl, where, amount, withWhom, images, viewingDateStr, entries, onSave]); // ★追加
 
       const touchStartX = useRef(null);
       const touchStartY = useRef(null);
@@ -703,7 +711,7 @@
       };
 
       const handleTouchStart = (e) => {
-        if (['BUTTON', 'A', 'SELECT', 'OPTION'].includes(e.target.tagName)) return;
+        if (['BUTTON', 'A', 'SELECT', 'OPTION', 'INPUT', 'TEXTAREA'].includes(e.target.tagName)) return; // ★修正
         touchStartX.current = e.targetTouches[0].clientX;
         touchStartY.current = e.targetTouches[0].clientY;
         touchTime.current = Date.now();
@@ -800,6 +808,7 @@
             <div key={viewingDateStr} className={`${slideEffect} px-4 flex flex-col gap-4 pb-4 pt-4`}>
               <div className="space-y-3 bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-gray-100 relative">
                 
+                {/* ★修正: 金額入力欄を追加 */}
                 <div className="grid grid-cols-2 gap-2">
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-map-marker-alt text-gray-400 text-xs"></i></div>
@@ -809,6 +818,10 @@
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-users text-gray-400 text-xs"></i></div>
                     <input type="text" value={withWhom} onChange={(e) => setWithWhom(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 placeholder-gray-400" placeholder="誰と" disabled={isSaving} />
                   </div>
+                </div>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-yen-sign text-yellow-500 text-xs"></i></div>
+                  <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full pl-8 p-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-yellow-500 outline-none text-sm bg-yellow-50/50 placeholder-gray-400" placeholder="使った金額（円）" disabled={isSaving} />
                 </div>
 
                 <div className="w-full aspect-square grid grid-cols-2 grid-rows-2 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-200" onTouchStart={(e) => e.stopPropagation()}>
@@ -1069,7 +1082,7 @@
                   return [first - 3, first - 2, first - 1, ...prev];
                 });
               } else if (entry.target === bottomObserverRef.current) {
-                // 未来の月は表示しないため、下方向への年追加は行わない
+                // 未来の月は表示しない
               }
             }
           });
@@ -1351,7 +1364,7 @@
       );
     }
 
-    function InsightsTab({ entries, onOpenProfile, peopleProfiles, resetKey, todayStr, onSelectDate }) {
+    function InsightsTab({ entries, onOpenProfile, peopleProfiles, resetKey, todayStr, distances, onSelectDate }) {
       const [viewMode, setViewMode] = useState('monthly'); 
       
       const { onTouchStart, onTouchEnd } = useSwipe(
@@ -1393,7 +1406,8 @@
               <MonthlyInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} resetKey={resetKey} onSelectDate={onSelectDate} />
             ) : (
               <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-                <AllTimeInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} todayStr={todayStr} />
+                {/* ★追加: distances を渡す */}
+                <AllTimeInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} todayStr={todayStr} distances={distances} />
               </div>
             )}
           </div>
@@ -1471,11 +1485,11 @@
 
       return (
         <div 
-          className="space-y-6 animate-fade-in"
+          className="space-y-3 animate-fade-in"
           onTouchStart={(e) => { e.stopPropagation(); onTouchStart(e); }}
           onTouchEnd={(e) => { e.stopPropagation(); onTouchEnd(e); }}
         >
-          <div className="sticky top-[68px] z-10 pb-4 bg-gray-50/95 backdrop-blur-sm -mx-4 px-4 pt-1">
+          <div className="sticky top-[68px] z-10 pb-2 bg-gray-50/95 backdrop-blur-sm -mx-4 px-4 pt-1">
             <div className="flex items-center justify-between bg-white rounded-2xl p-2 shadow-sm border border-gray-100">
               <button onClick={handlePrevMonth} className="w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-xl"><i className="fas fa-chevron-left"></i></button>
               <div className="text-center flex flex-col items-center flex-1">
@@ -1498,8 +1512,8 @@
           ) : (
             <>
               {stats.topTopics.length > 0 && (
-                <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-                  <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-layer-group text-purple-500 mr-2"></i>記録したトピック</h3>
+                <div className="bg-white rounded-3xl p-4 shadow-sm border border-gray-100">
+                  <h3 className="text-gray-800 font-bold mb-3 flex items-center"><i className="fas fa-layer-group text-purple-500 mr-2"></i>記録したトピック</h3>
                   <div className="flex flex-wrap gap-2">
                      {stats.topTopics.map(([name, count]) => (
                        <button key={name} onClick={() => onOpenProfile({type: 'topic', name})} className="px-3 py-1.5 bg-purple-50 text-purple-700 text-xs font-bold rounded-xl border border-purple-100 active:scale-95 shadow-sm flex items-center">
@@ -1509,23 +1523,10 @@
                   </div>
                 </div>
               )}
-
-              {stats.topPlaces.length > 0 && (
-                <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-                  <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-map-marker-alt text-green-500 mr-2"></i>行ったお店</h3>
-                  <div className="flex flex-wrap gap-2">
-                     {stats.topPlaces.map(([name, count]) => (
-                       <button key={name} onClick={() => onOpenProfile({type: 'place', name})} className="px-3 py-1.5 bg-green-50 text-green-700 text-xs font-bold rounded-xl border border-green-100 active:scale-95 shadow-sm flex items-center">
-                         {name} <span className="opacity-50 ml-1.5 font-medium">{count}回</span>
-                       </button>
-                     ))}
-                  </div>
-                </div>
-              )}
               
               {stats.topPeople.length > 0 && (
-                <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-                  <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-users text-orange-500 mr-2"></i>会った人</h3>
+                <div className="bg-white rounded-3xl p-4 shadow-sm border border-gray-100">
+                  <h3 className="text-gray-800 font-bold mb-3 flex items-center"><i className="fas fa-users text-orange-500 mr-2"></i>会った人</h3>
                   <div className="flex flex-wrap gap-2">
                      {stats.topPeople.map(([name, count]) => {
                        const xUser = peopleProfiles[name]?.xUsername;
@@ -1540,8 +1541,21 @@
                 </div>
               )}
 
+              {stats.topPlaces.length > 0 && (
+                <div className="bg-white rounded-3xl p-4 shadow-sm border border-gray-100">
+                  <h3 className="text-gray-800 font-bold mb-3 flex items-center"><i className="fas fa-map-marker-alt text-green-500 mr-2"></i>行ったお店</h3>
+                  <div className="flex flex-wrap gap-2">
+                     {stats.topPlaces.map(([name, count]) => (
+                       <button key={name} onClick={() => onOpenProfile({type: 'place', name})} className="px-3 py-1.5 bg-green-50 text-green-700 text-xs font-bold rounded-xl border border-green-100 active:scale-95 shadow-sm flex items-center">
+                         {name} <span className="opacity-50 ml-1.5 font-medium">{count}回</span>
+                       </button>
+                     ))}
+                  </div>
+                </div>
+              )}
+
               {stats.images.length > 0 && (
-                <div>
+                <div className="pt-2">
                   <h3 className="text-gray-500 text-xs font-bold mb-3 ml-1 uppercase tracking-wider"><i className="fas fa-image mr-2"></i>今月の写真</h3>
                   <div className="grid grid-cols-3 gap-2">
                     {stats.images.map((imgObj, i) => (
@@ -1558,11 +1572,18 @@
       );
     }
 
-    function AllTimeInsights({ entries, onOpenProfile, peopleProfiles, todayStr }) {
-      const { allPeople } = useMemo(() => {
+    // ★追加・修正: 全期間ダッシュボードの構築
+    function AllTimeInsights({ entries, onOpenProfile, peopleProfiles, todayStr, distances = {} }) {
+      
+      const { allPeople, stats, topAreas } = useMemo(() => {
         const peopleMap = {};
+        const areaMap = {};
+        let totalAmount = 0;
+        let amountInputDays = 0;
+        let totalDistance = 0;
 
         entries.forEach(e => {
+          // 人の集計
           splitTags(e.withWhom).forEach(p => {
             if (!peopleMap[p]) {
               peopleMap[p] = { count: 0, dates: [] };
@@ -1570,23 +1591,117 @@
             peopleMap[p].count += 1;
             if (e.when) peopleMap[p].dates.push(e.when);
           });
+
+          // 金額の集計
+          if (e.amount && !isNaN(Number(e.amount))) {
+            totalAmount += Number(e.amount);
+            amountInputDays += 1;
+          }
+
+          // エリアと距離の集計
+          splitTags(e.where).forEach(place => {
+            // 距離加算
+            if (distances[place]) {
+              totalDistance += distances[place];
+            }
+            // エリア集計 (_ の前を抽出)
+            const area = place.split(/_|＿/)[0];
+            if (area) {
+              areaMap[area] = (areaMap[area] || 0) + 1;
+            }
+          });
         });
 
+        // ランキングのソート
         const sortedPeople = Object.entries(peopleMap).map(([name, data]) => ({
           name,
           count: data.count,
           dates: data.dates
         })).sort((a, b) => b.count - a.count);
 
+        const sortedAreas = Object.entries(areaMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
         return {
           allPeople: sortedPeople,
+          topAreas: sortedAreas,
+          stats: {
+            totalAmount,
+            amountInputDays,
+            totalDistance
+          }
         };
-      }, [entries]);
+      }, [entries, distances]);
+
+      // 表示用のフォーマット計算
+      const formattedAmount = new Intl.NumberFormat('ja-JP').format(stats.totalAmount);
+      const avgAmount = stats.amountInputDays > 0 ? new Intl.NumberFormat('ja-JP').format(Math.floor(stats.totalAmount / stats.amountInputDays)) : '0';
+      const formattedDistance = new Intl.NumberFormat('ja-JP').format(stats.totalDistance);
+      
+      // 地球一周(40,000km)の進捗率
+      const earthProgress = Math.min((stats.totalDistance / 40000) * 100, 100);
+      const progressPercent = earthProgress.toFixed(1);
+      
+      // エリアグラフ用の最大値
+      const maxAreaCount = topAreas.length > 0 ? topAreas[0][1] : 1;
 
       return (
-        <div className="space-y-6 animate-fade-in mt-4">
+        <div className="space-y-4 animate-fade-in mt-4">
+          
+          {/* 追加: 距離と金額のサマリー */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 flex flex-col justify-center">
+              <p className="text-[10px] text-gray-500 font-bold mb-1 flex items-center"><i className="fas fa-shoe-prints text-green-500 mr-1.5"></i>累計移動距離</p>
+              <div className="flex items-baseline mb-2">
+                <span className="text-2xl font-bold text-gray-800">{formattedDistance}</span>
+                <span className="text-xs text-gray-500 ml-1 font-medium">km</span>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-1.5 mb-1 overflow-hidden">
+                <div className="bg-green-500 h-1.5 rounded-full" style={{ width: `${earthProgress}%` }}></div>
+              </div>
+              <p className="text-[9px] text-gray-400 text-right">地球一周まで: {progressPercent}%</p>
+            </div>
+
+            <div className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 flex flex-col justify-center">
+              <p className="text-[10px] text-gray-500 font-bold mb-1 flex items-center"><i className="fas fa-yen-sign text-yellow-500 mr-1.5"></i>使った金額</p>
+              <div className="flex items-baseline mb-1">
+                <span className="text-xl font-bold text-gray-800">{formattedAmount}</span>
+                <span className="text-xs text-gray-500 ml-1 font-medium">円</span>
+              </div>
+              <p className="text-[10px] text-gray-400 font-bold border-t border-gray-50 pt-2 mt-1">
+                平均: 約{avgAmount}円 <span className="font-normal scale-90 inline-block">/回</span>
+              </p>
+            </div>
+          </div>
+
+          {/* 追加: よく行くエリア (横棒グラフ) */}
           <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-            <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-users text-blue-500 mr-2"></i> よく会う人 ランキング</h3>
+            <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-map-marked-alt text-blue-500 mr-2"></i>よく行くエリア</h3>
+            {topAreas.length > 0 ? (
+              <div className="space-y-3">
+                {topAreas.map(([area, count], index) => {
+                  const widthPercent = (count / maxAreaCount) * 100;
+                  return (
+                    <div key={area} className="relative">
+                      <div className="flex justify-between items-end mb-1 z-10 relative px-1">
+                        <span className="text-xs font-bold text-gray-700 flex items-center">
+                          {index === 0 && <i className="fas fa-crown text-yellow-400 mr-1.5"></i>}
+                          {area}
+                        </span>
+                        <span className="text-xs text-gray-500 font-bold">{count}回</span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-lg h-5 overflow-hidden">
+                        <div className="bg-blue-100 h-5 rounded-lg transition-all duration-1000 ease-out" style={{ width: `${widthPercent}%` }}></div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : <p className="text-gray-400 text-sm text-center py-4">データがありません</p>}
+          </div>
+
+          {/* 既存: よく会う人ランキング */}
+          <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+            <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-users text-orange-500 mr-2"></i> 会った人 ランキング</h3>
             {allPeople.length > 0 ? (
               <ul className="space-y-3">
                 {allPeople.map((item, index) => {
@@ -1608,7 +1723,8 @@
                     
                     scoreDisplay = (
                       <div className="flex flex-col items-end mr-3">
-                        <span className="text-xs text-gray-500 font-medium">{lastDate} ({daysSinceLast}日前)</span>
+                        <span className="text-[10px] text-gray-500 font-medium tracking-tighter">{lastDate}</span>
+                        <span className="text-[9px] text-gray-400">({daysSinceLast}日前)</span>
                       </div>
                     );
                   }
