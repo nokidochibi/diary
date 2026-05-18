@@ -244,6 +244,10 @@
     }
 
     function App() {
+      // ★追加: 認証状態とパスワード入力の管理
+      const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('diary_auth_passed') === 'true');
+      const [passwordInput, setPasswordInput] = useState('');
+
       const [activeTab, setActiveTab] = useState('home');
       const [searchQuery, setSearchQuery] = useState('');
       const [searchFilterTag, setSearchFilterTag] = useState(null);
@@ -253,7 +257,6 @@
       const [selectedProfile, setSelectedProfile] = useState(null); 
       const [peopleProfiles, setPeopleProfiles] = useState({});
       const [topicsWiki, setTopicsWiki] = useState({}); 
-      // ★追加: 距離データの辞書
       const [distances, setDistances] = useState({});
 
       const mainRef = useRef(null); 
@@ -287,7 +290,6 @@
                 setEntries(sortedData);
                 if (data.profiles) setPeopleProfiles(data.profiles);
                 if (data.topicsWiki) setTopicsWiki(data.topicsWiki); 
-                // ★追加: 距離データを保存
                 if (data.distances) setDistances(data.distances);
               }
             } catch (error) {
@@ -308,10 +310,10 @@
       };
 
       useEffect(() => {
-        if (mainRef.current) {
+        if (mainRef.current && isAuthenticated) {
           mainRef.current.scrollTo({ top: scrollPositions.current[activeTab] || 0, behavior: 'auto' });
         }
-      }, [activeTab]);
+      }, [activeTab, isAuthenticated]);
 
       const updatePersonProfile = async (name, data) => {
         setPeopleProfiles(prev => ({ ...prev, [name]: { ...(prev[name] || {}), ...data } }));
@@ -442,6 +444,35 @@
         }
       };
 
+      // ★追加: 認証画面（このコンポーネントが表示されていても裏でuseEffectのfetchEntriesは実行される）
+      if (!isAuthenticated) {
+        return (
+          <div className="h-[100dvh] w-full bg-gray-50 flex flex-col items-center justify-center p-4">
+            <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 w-full max-w-sm text-center animate-zoom-in">
+              <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i className="fas fa-lock text-2xl text-gray-400"></i>
+              </div>
+              <h2 className="text-lg font-bold text-gray-800 mb-6">プライベートモード</h2>
+              <input 
+                type="password" 
+                className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-center tracking-widest text-lg font-mono bg-gray-50 mb-2 transition-all"
+                value={passwordInput}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setPasswordInput(val);
+                  if (val === 'P11ERXEP') {
+                    setIsAuthenticated(true);
+                    localStorage.setItem('diary_auth_passed', 'true');
+                  }
+                }}
+                placeholder="パスワード"
+              />
+              <p className="text-xs text-gray-400 mt-4">正しいパスワードを入力すると自動で開きます</p>
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div className="h-[100dvh] w-full bg-white flex flex-col relative overflow-hidden">
           {isLoading && (
@@ -499,7 +530,7 @@
                 peopleProfiles={peopleProfiles} 
                 resetKey={tabResetKeys.insights}
                 todayStr={todayStr}
-                distances={distances} // ★追加: 距離データを渡す
+                distances={distances}
                 onSelectDate={(date) => { 
                   setViewingDateStr(date); 
                   setActiveTab('home'); 
@@ -547,7 +578,7 @@
 
     function HomeTab({ viewingDateStr, setViewingDateStr, todayStr, entries, onSave, isGasLinked, onOpenProfile, peopleProfiles, availableTopics = [] }) {
       const [where, setWhere] = useState('');
-      const [amount, setAmount] = useState(''); // ★追加: 金額
+      const [amount, setAmount] = useState(''); 
       const [withWhom, setWithWhom] = useState('');
       const [images, setImages] = useState([]);
       
@@ -572,7 +603,7 @@
         if (viewingDateStr !== lastLoadedDate || (entry && lastLoadedDate === null)) {
           if (entry) {
             setWhere(entry.where || '');
-            setAmount(entry.amount || ''); // ★追加
+            setAmount(entry.amount || ''); 
             setWithWhom(entry.withWhom || '');
             setImages(entry.images || []);
             
@@ -609,7 +640,7 @@
               setTopic1(''); setTopic2(''); setWhat1(''); setWhat2(''); setTwitterUrl('');
             }
           } else {
-            setWhere(''); setAmount(''); setWithWhom(''); setImages([]); // ★追加
+            setWhere(''); setAmount(''); setWithWhom(''); setImages([]); 
             setTopic1(''); setTopic2(''); setWhat1(''); setWhat2(''); setTwitterUrl('');
           }
           setLastLoadedDate(viewingDateStr);
@@ -620,7 +651,7 @@
         return {
           when: viewingDateStr, 
           where, 
-          amount, // ★追加
+          amount, 
           withWhom, 
           images,
           topic1,
@@ -637,7 +668,7 @@
         
         const isChanged = 
           (entry?.where || '') !== where ||
-          (entry?.amount || '') !== amount || // ★追加
+          (entry?.amount || '') !== amount || 
           (entry?.withWhom || '') !== withWhom ||
           (entry?.topic1 || '') !== topic1 ||
           (entry?.what1 || '') !== what1 ||
@@ -646,7 +677,7 @@
           (entry?.twitterUrl || '') !== twitterUrl ||
           JSON.stringify(entry?.images || []) !== JSON.stringify(images);
 
-        const hasContent = what1 || what2 || where || amount || withWhom || topic1 || topic2 || twitterUrl || images.length > 0; // ★追加
+        const hasContent = what1 || what2 || where || amount || withWhom || topic1 || topic2 || twitterUrl || images.length > 0; 
 
         if (isChanged && hasContent) {
           onSave(currentPayload);
@@ -659,7 +690,7 @@
         
         const isChanged = 
           (entry?.where || '') !== where ||
-          (entry?.amount || '') !== amount || // ★追加
+          (entry?.amount || '') !== amount || 
           (entry?.withWhom || '') !== withWhom ||
           (entry?.topic1 || '') !== topic1 ||
           (entry?.what1 || '') !== what1 ||
@@ -668,7 +699,7 @@
           (entry?.twitterUrl || '') !== twitterUrl ||
           JSON.stringify(entry?.images || []) !== JSON.stringify(images);
 
-        const hasContent = what1 || what2 || where || amount || withWhom || topic1 || topic2 || twitterUrl || images.length > 0; // ★追加
+        const hasContent = what1 || what2 || where || amount || withWhom || topic1 || topic2 || twitterUrl || images.length > 0; 
 
         if (isChanged && hasContent) {
           const timerId = setTimeout(async () => {
@@ -682,7 +713,7 @@
           }, 1500);
           return () => clearTimeout(timerId);
         }
-      }, [what1, what2, topic1, topic2, twitterUrl, where, amount, withWhom, images, viewingDateStr, entries, onSave]); // ★追加
+      }, [what1, what2, topic1, topic2, twitterUrl, where, amount, withWhom, images, viewingDateStr, entries, onSave]); 
 
       const touchStartX = useRef(null);
       const touchStartY = useRef(null);
@@ -711,7 +742,7 @@
       };
 
       const handleTouchStart = (e) => {
-        if (['BUTTON', 'A', 'SELECT', 'OPTION', 'INPUT', 'TEXTAREA'].includes(e.target.tagName)) return; // ★修正
+        if (['BUTTON', 'A', 'SELECT', 'OPTION', 'INPUT', 'TEXTAREA'].includes(e.target.tagName)) return; 
         touchStartX.current = e.targetTouches[0].clientX;
         touchStartY.current = e.targetTouches[0].clientY;
         touchTime.current = Date.now();
@@ -808,7 +839,6 @@
             <div key={viewingDateStr} className={`${slideEffect} px-4 flex flex-col gap-4 pb-4 pt-4`}>
               <div className="space-y-3 bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-gray-100 relative">
                 
-                {/* ★修正: 金額入力欄を追加 */}
                 <div className="grid grid-cols-2 gap-2">
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i className="fas fa-map-marker-alt text-gray-400 text-xs"></i></div>
@@ -1406,7 +1436,6 @@
               <MonthlyInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} resetKey={resetKey} onSelectDate={onSelectDate} />
             ) : (
               <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-                {/* ★追加: distances を渡す */}
                 <AllTimeInsights entries={entries} onOpenProfile={onOpenProfile} peopleProfiles={peopleProfiles} todayStr={todayStr} distances={distances} />
               </div>
             )}
@@ -1572,7 +1601,6 @@
       );
     }
 
-    // ★追加・修正: 全期間ダッシュボードの構築
     function AllTimeInsights({ entries, onOpenProfile, peopleProfiles, todayStr, distances = {} }) {
       
       const { allPeople, stats, topAreas } = useMemo(() => {
@@ -1583,7 +1611,6 @@
         let totalDistance = 0;
 
         entries.forEach(e => {
-          // 人の集計
           splitTags(e.withWhom).forEach(p => {
             if (!peopleMap[p]) {
               peopleMap[p] = { count: 0, dates: [] };
@@ -1592,19 +1619,15 @@
             if (e.when) peopleMap[p].dates.push(e.when);
           });
 
-          // 金額の集計
           if (e.amount && !isNaN(Number(e.amount))) {
             totalAmount += Number(e.amount);
             amountInputDays += 1;
           }
 
-          // エリアと距離の集計
           splitTags(e.where).forEach(place => {
-            // 距離加算
             if (distances[place]) {
               totalDistance += distances[place];
             }
-            // エリア集計 (_ の前を抽出)
             const area = place.split(/_|＿/)[0];
             if (area) {
               areaMap[area] = (areaMap[area] || 0) + 1;
@@ -1612,14 +1635,14 @@
           });
         });
 
-        // ランキングのソート
         const sortedPeople = Object.entries(peopleMap).map(([name, data]) => ({
           name,
           count: data.count,
           dates: data.dates
         })).sort((a, b) => b.count - a.count);
 
-        const sortedAreas = Object.entries(areaMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        // ★修正: TOP10まで拡張
+        const sortedAreas = Object.entries(areaMap).sort((a, b) => b[1] - a[1]).slice(0, 10);
 
         return {
           allPeople: sortedPeople,
@@ -1632,22 +1655,18 @@
         };
       }, [entries, distances]);
 
-      // 表示用のフォーマット計算
       const formattedAmount = new Intl.NumberFormat('ja-JP').format(stats.totalAmount);
       const avgAmount = stats.amountInputDays > 0 ? new Intl.NumberFormat('ja-JP').format(Math.floor(stats.totalAmount / stats.amountInputDays)) : '0';
       const formattedDistance = new Intl.NumberFormat('ja-JP').format(stats.totalDistance);
       
-      // 地球一周(40,000km)の進捗率
       const earthProgress = Math.min((stats.totalDistance / 40000) * 100, 100);
       const progressPercent = earthProgress.toFixed(1);
       
-      // エリアグラフ用の最大値
       const maxAreaCount = topAreas.length > 0 ? topAreas[0][1] : 1;
 
       return (
         <div className="space-y-4 animate-fade-in mt-4">
           
-          {/* 追加: 距離と金額のサマリー */}
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 flex flex-col justify-center">
               <p className="text-[10px] text-gray-500 font-bold mb-1 flex items-center"><i className="fas fa-shoe-prints text-green-500 mr-1.5"></i>累計移動距離</p>
@@ -1673,7 +1692,6 @@
             </div>
           </div>
 
-          {/* 追加: よく行くエリア (横棒グラフ) */}
           <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
             <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-map-marked-alt text-blue-500 mr-2"></i>よく行くエリア</h3>
             {topAreas.length > 0 ? (
@@ -1684,7 +1702,7 @@
                     <div key={area} className="relative">
                       <div className="flex justify-between items-end mb-1 z-10 relative px-1">
                         <span className="text-xs font-bold text-gray-700 flex items-center">
-                          {index === 0 && <i className="fas fa-crown text-yellow-400 mr-1.5"></i>}
+                          {/* ★修正: 王冠マークの廃止 */}
                           {area}
                         </span>
                         <span className="text-xs text-gray-500 font-bold">{count}回</span>
@@ -1699,7 +1717,6 @@
             ) : <p className="text-gray-400 text-sm text-center py-4">データがありません</p>}
           </div>
 
-          {/* 既存: よく会う人ランキング */}
           <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
             <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-users text-orange-500 mr-2"></i> 会った人 ランキング</h3>
             {allPeople.length > 0 ? (
