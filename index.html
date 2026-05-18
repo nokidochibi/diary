@@ -244,7 +244,7 @@
     }
 
     function App() {
-      // ★追加: 認証状態とパスワード入力の管理
+      // ★修正: 認証状態とパスワード入力の管理
       const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('diary_auth_passed') === 'true');
       const [passwordInput, setPasswordInput] = useState('');
 
@@ -444,7 +444,7 @@
         }
       };
 
-      // ★追加: 認証画面（このコンポーネントが表示されていても裏でuseEffectのfetchEntriesは実行される）
+      // ★修正: パスワード入力欄で辞書登録が使えるように type を text に変更し、スタイルで隠す
       if (!isAuthenticated) {
         return (
           <div className="h-[100dvh] w-full bg-gray-50 flex flex-col items-center justify-center p-4">
@@ -454,13 +454,14 @@
               </div>
               <h2 className="text-lg font-bold text-gray-800 mb-6">プライベートモード</h2>
               <input 
-                type="password" 
+                type="text" 
                 className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-center tracking-widest text-lg font-mono bg-gray-50 mb-2 transition-all"
+                style={{ WebkitTextSecurity: 'disc' }}
                 value={passwordInput}
                 onChange={(e) => {
                   const val = e.target.value;
                   setPasswordInput(val);
-                  if (val === 'P11ERXEP') {
+                  if (val.trim() === 'P11ERXEP') {
                     setIsAuthenticated(true);
                     localStorage.setItem('diary_auth_passed', 'true');
                   }
@@ -1641,7 +1642,6 @@
           dates: data.dates
         })).sort((a, b) => b.count - a.count);
 
-        // ★修正: TOP10まで拡張
         const sortedAreas = Object.entries(areaMap).sort((a, b) => b[1] - a[1]).slice(0, 10);
 
         return {
@@ -1702,7 +1702,6 @@
                     <div key={area} className="relative">
                       <div className="flex justify-between items-end mb-1 z-10 relative px-1">
                         <span className="text-xs font-bold text-gray-700 flex items-center">
-                          {/* ★修正: 王冠マークの廃止 */}
                           {area}
                         </span>
                         <span className="text-xs text-gray-500 font-bold">{count}回</span>
