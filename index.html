@@ -246,7 +246,6 @@
     }
 
     function App() {
-      // ★修正: 完全なセキュリティ認証の仕組みに変更
       const [isAuthenticated, setIsAuthenticated] = useState(false);
       const [isInitializing, setIsInitializing] = useState(true);
       const [passwordInput, setPasswordInput] = useState('');
@@ -278,7 +277,6 @@
       
       const [viewingDateStr, setViewingDateStr] = useState(todayStr);
 
-      // ★追加: パスワードを付与してGASからデータを安全に取ってくる関数
       const fetchEntries = async (pwd) => {
         setIsLoading(true);
         setAuthError(false);
@@ -287,7 +285,6 @@
           const data = await response.json();
           
           if (data.status === "error") {
-            // パスワードが間違っている場合
             setIsAuthenticated(false);
             localStorage.removeItem('diary_auth_password');
             if (passwordInput.length > 0) {
@@ -295,11 +292,9 @@
               setPasswordInput('');
             }
           } else {
-            // 認証成功
             setIsAuthenticated(true);
             localStorage.setItem('diary_auth_password', pwd);
             
-            // データのセット
             if (data.entries) {
               const sortedData = data.entries.filter(e => e.when).sort((a, b) => new Date(b.when) - new Date(a.when));
               setEntries(sortedData);
@@ -318,7 +313,6 @@
         }
       };
 
-      // ★修正: アプリを開いた時は、まずローカルのパスワードでfetchを試みる
       useEffect(() => {
         if (GAS_WEB_APP_URL) {
           const savedPwd = localStorage.getItem('diary_auth_password');
@@ -351,7 +345,6 @@
             await fetch(GAS_WEB_APP_URL, {
               method: 'POST',
               headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
-              // ★追加: 書き込み時もパスワードを送信する
               body: JSON.stringify({ type: 'profile', name: name, password: getPwd(), ...data }),
             });
           } catch (error) {}
@@ -490,7 +483,6 @@
                 <i className="fas fa-lock text-2xl text-gray-400"></i>
               </div>
               <h2 className="text-lg font-bold text-gray-800 mb-6">プライベートモード</h2>
-              {/* 文字数で自動判定し、完全に答えを隠蔽する */}
               <input 
                 type="text" 
                 className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-center tracking-widest text-lg font-mono bg-gray-50 transition-all ${authError ? 'border-red-400 focus:ring-red-500 bg-red-50' : 'border-gray-200'}`}
@@ -1518,7 +1510,7 @@
 
       useEffect(() => {
         if (resetKey > 0) {
-          const monthsWithEntries = [...new Set(entries.filter(e => e.when).map(e => e.when.substring(0, 7)))];
+          const monthsWithEntries = Array.from(new Set(entries.filter(e => e.when).map(e => e.when.substring(0, 7))));
           if (monthsWithEntries.length > 0) {
             const randomMonthStr = monthsWithEntries[Math.floor(Math.random() * monthsWithEntries.length)];
             const [y, m] = randomMonthStr.split('-');
@@ -1700,11 +1692,6 @@
           }
         };
       }, [entries, distances]);
-      
-      // ★追加: 同率順位の計算用
-      const uniqueCounts = useMemo(() => {
-        return [...new Set(allPeople.map(p => p.count))].sort((a, b) => b - a);
-      }, [allPeople]);
 
       const formattedAmount = new Intl.NumberFormat('ja-JP').format(stats.totalAmount);
       const avgAmount = stats.amountInputDays > 0 ? new Intl.NumberFormat('ja-JP').format(Math.floor(stats.totalAmount / stats.amountInputDays)) : '0';
@@ -1714,6 +1701,8 @@
       const progressPercent = earthProgress.toFixed(1);
       
       const maxAreaCount = topAreas.length > 0 ? topAreas[0][1] : 1;
+
+      const uniqueCounts = useMemo(() => Array.from(new Set(allPeople.map(p => p.count))), [allPeople]);
 
       return (
         <div className="space-y-4 animate-fade-in mt-4">
@@ -1775,7 +1764,6 @@
                   const { name, count, dates } = item;
                   const xUser = peopleProfiles[name]?.xUsername;
                   
-                  // ★修正: 1, 2, 2, 3...と順位を詰めて同率を判定する
                   const rank = uniqueCounts.indexOf(count) + 1;
                   
                   let badgeClass = "bg-gray-100 text-gray-500";
@@ -1789,7 +1777,8 @@
                     const lastDateObj = new Date(dates[0]); 
                     const msToDays = ms => Math.floor(ms / (1000 * 60 * 60 * 24));
                     const daysSinceLast = msToDays(todayDate - lastDateObj); 
-                    const lastDate = dates[0].replace(/-/g, '/');
+                    
+                    const lastDate = String(dates[0]).replace(/-/g, '/');
                     
                     scoreDisplay = (
                       <div className="flex flex-col items-end mr-3">
@@ -1802,7 +1791,6 @@
                   return (
                     <li key={name} onClick={() => onOpenProfile({type: 'person', name: name})} className="flex justify-between items-center bg-gray-50 hover:bg-gray-100 active:scale-95 transition-transform p-3 rounded-2xl cursor-pointer">
                       <div className="flex items-center shrink min-w-0">
-                        {/* ★修正: index + 1 ではなく rank を表示 */}
                         <span className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${badgeClass}`}>
                           {rank}
                         </span>
