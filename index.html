@@ -1770,10 +1770,12 @@
                   const { name, count, dates } = item;
                   const xUser = peopleProfiles[name]?.xUsername;
                   
+                  const rank = allPeople.findIndex(p => p.count === count) + 1;
+                  
                   let badgeClass = "bg-gray-100 text-gray-500";
-                  if (index === 0) badgeClass = "bg-yellow-100 text-yellow-700";
-                  else if (index === 1) badgeClass = "bg-gray-200 text-gray-600";
-                  else if (index === 2) badgeClass = "bg-orange-100 text-orange-700";
+                  if (rank === 1) badgeClass = "bg-yellow-100 text-yellow-700";
+                  else if (rank === 2) badgeClass = "bg-gray-200 text-gray-600";
+                  else if (rank === 3) badgeClass = "bg-orange-100 text-orange-700";
 
                   let scoreDisplay = null;
                   if (dates.length > 0) {
