@@ -1766,11 +1766,12 @@
             <h3 className="text-gray-800 font-bold mb-4 flex items-center"><i className="fas fa-users text-orange-500 mr-2"></i> 会った人 ランキング</h3>
             {allPeople.length > 0 ? (
               <ul className="space-y-3">
-                {allPeople.map((item, index) => {
+                {allPeople.map((item) => {
                   const { name, count, dates } = item;
                   const xUser = peopleProfiles[name]?.xUsername;
                   
-                  const rank = allPeople.findIndex(p => p.count === count) + 1;
+                  // ★修正: 1, 2, 2, 3...と順位を詰めて同率を判定する
+                  const rank = uniqueCounts.indexOf(count) + 1;
                   
                   let badgeClass = "bg-gray-100 text-gray-500";
                   if (rank === 1) badgeClass = "bg-yellow-100 text-yellow-700";
@@ -1796,8 +1797,9 @@
                   return (
                     <li key={name} onClick={() => onOpenProfile({type: 'person', name: name})} className="flex justify-between items-center bg-gray-50 hover:bg-gray-100 active:scale-95 transition-transform p-3 rounded-2xl cursor-pointer">
                       <div className="flex items-center shrink min-w-0">
+                        {/* ★修正: index + 1 ではなく rank を表示 */}
                         <span className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${badgeClass}`}>
-                          {index + 1}
+                          {rank}
                         </span>
                         {xUser ? <img src={`https://unavatar.io/twitter/${xUser}`} className="shrink-0 w-6 h-6 rounded-full mr-2 object-cover border border-orange-200" loading="lazy" onError={(e)=>{e.target.style.display='none'}} /> : null}
                         <span className="font-bold text-gray-700 truncate">{name}</span>
